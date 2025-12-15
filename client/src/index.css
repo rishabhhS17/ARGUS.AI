@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Leaflet Fixes */
+.leaflet-container {
+  background: #0f172a; /* Slate 900 */
+}
