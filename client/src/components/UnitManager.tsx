@@ -10,6 +10,7 @@ import L from "leaflet";
 import io from "socket.io-client";
 import { Flame, Stethoscope, Siren, Map as MapIcon } from "lucide-react"; // Removed unused 'Shield', 'Trash2'
 import "leaflet/dist/leaflet.css";
+import { API_URL } from "../services/gemini";
 
 // ... (Keep existing Icons: policeIcon, fireIcon, medicalIcon) ...
 const policeIcon = new L.DivIcon({
@@ -25,7 +26,7 @@ const medicalIcon = new L.DivIcon({
   html: `<div style="background:#22c55e; width:16px; height:16px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #22c55e;"></div>`,
 });
 
-const socket = io("http://localhost:3001");
+const socket = io(API_URL);
 
 // Fix: Added explicit type for Leaflet Mouse Event
 function ClickHandler({
@@ -50,7 +51,7 @@ export default function UnitManager() {
   };
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/data")
+    fetch(`${API_URL}/api/data`)
       .then((res) => res.json())
       .then((data) => setUnits(data.units));
     socket.on("units_updated", (newUnits) => setUnits(newUnits));
@@ -61,7 +62,7 @@ export default function UnitManager() {
 
   const handleAddUnit = async (lat: number, lng: number) => {
     const name = unitName || getNextName(selectedType, units.length);
-    await fetch("http://localhost:3001/api/units", {
+    await fetch(`${API_URL}/api/units`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
