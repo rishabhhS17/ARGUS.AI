@@ -2,17 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import io from 'socket.io-client';
-import { Shield, Activity, Crosshair, MapPin, Eye, Volume2, Truck, CheckCircle2, Trash2, Maximize, Flame, Stethoscope, Megaphone, Loader2, ChevronDown } from 'lucide-react';
+import { Activity, Crosshair, MapPin, Eye, Volume2, Truck, CheckCircle2, Trash2, Maximize, Flame, Stethoscope, Megaphone, Loader2, ChevronDown } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
-import { generateAdvisoryText, API_URL } from '../services/gemini'; // [FIXED: Import API_URL]
+import { generateAdvisoryText } from '../services/gemini';
 
-const socket = io(API_URL); // [FIXED: Use API_URL]
+// --- ENV VAR HANDLING ---
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const socket = io(API_URL);
 
-// Icons (Keep as is)
-const incidentIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="position:relative; width:24px; height:24px;"><div style="position:absolute; inset:0; background:rgba(239,68,68,0.5); border-radius:50%; animation:ping 1s infinite;"></div><div style="position:absolute; inset:6px; background:#ef4444; border:2px solid white; border-radius:50%;"></div></div>` });
-const policeIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#3b82f6; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #3b82f6;"></div>` });
-const fireIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#ef4444; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #ef4444;"></div>` });
-const medicalIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#22c55e; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #22c55e;"></div>` });
+// --- ICONS ---
+const incidentIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="position:relative; width:24px; height:24px;"><div style="position:absolute; inset:0; background:rgba(239,68,68,0.5); border-radius:50%; animation:ping 1s infinite;"></div><div style="position:absolute; inset:6px; background:#ef4444; border:2px solid white; border-radius:50%;"></div></div>` }) as any;
+const policeIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#3b82f6; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #3b82f6;"></div>` }) as any;
+const fireIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#ef4444; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #ef4444;"></div>` }) as any;
+const medicalIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#22c55e; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #22c55e;"></div>` }) as any;
+
+// Helper to validate coordinates
+const isValidCoord = (coord: any) => Array.isArray(coord) && coord.length === 2 && coord[0] != null && coord[1] != null;
 
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371; 
@@ -26,7 +31,7 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
 function MapController({ center, zoom, shouldFly }: { center: [number, number] | null, zoom: number, shouldFly: boolean }) {
   const map = useMap();
   useEffect(() => {
-    if (center && shouldFly) {
+    if (center && shouldFly && isValidCoord(center)) {
       map.invalidateSize();
       map.flyTo(center, zoom, { animate: true, duration: 2.0 });
     }
@@ -45,13 +50,14 @@ export default function SurveillanceDashboard() {
   const [shouldFly, setShouldFly] = useState(false);
   const [flash, setFlash] = useState(false);
   const [advisoryStatus, setAdvisoryStatus] = useState('');
+
+  // Mobile Drawer State
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   const DEFAULT_VIEW: [number, number] = [28.6139, 77.2090]; 
 
   const handleResetSystem = async () => {
     if(!confirm("⚠️ RESET SYSTEM?\nThis will clear all incidents and advisories.")) return;
-    // [FIXED: Use API_URL]
     await fetch(`${API_URL}/api/clear`, { method: 'DELETE' });
     setSelectedIncident(null);
     setIsPanelOpen(false);
@@ -70,7 +76,6 @@ export default function SurveillanceDashboard() {
     setAdvisoryStatus('GENERATING...');
     const text = await generateAdvisoryText(selectedIncident);
     setAdvisoryStatus('POSTING...');
-    // [FIXED: Use API_URL]
     await fetch(`${API_URL}/api/advisory`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -81,18 +86,23 @@ export default function SurveillanceDashboard() {
   };
 
   const focusOnIncident = (incident: any) => {
+    if (!isValidCoord(incident?.location?.coordinates)) return;
+
     setSelectedIncident(incident);
     setMapCenter(incident.location.coordinates);
     setMapZoom(16);
     setShouldFly(true);
-    setIsPanelOpen(true);
+    setIsPanelOpen(true); 
     setTimeout(() => setShouldFly(false), 2500);
     
     if (incident.status !== 'DISPATCHED') {
-      const idleUnits = units.filter(u => u.status === 'IDLE').map(u => ({
-        ...u,
-        distance: getDistanceKm(incident.location.coordinates[0], incident.location.coordinates[1], u.coordinates[0], u.coordinates[1])
-      }));
+      const incidentCoords = incident.location.coordinates;
+      const idleUnits = units
+        .filter(u => u.status === 'IDLE' && isValidCoord(u.coordinates))
+        .map(u => ({
+          ...u,
+          distance: getDistanceKm(incidentCoords[0], incidentCoords[1], u.coordinates[0], u.coordinates[1])
+        }));
 
       const bestPolice = idleUnits.filter(u => u.type === 'POLICE').sort((a, b) => a.distance - b.distance)[0];
       const bestFire = idleUnits.filter(u => u.type === 'FIRE').sort((a, b) => a.distance - b.distance)[0];
@@ -104,7 +114,6 @@ export default function SurveillanceDashboard() {
 
   const handleDeploy = async (unitId: string) => {
     if (!selectedIncident) return;
-    // [FIXED: Use API_URL]
     await fetch(`${API_URL}/api/deploy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -114,13 +123,12 @@ export default function SurveillanceDashboard() {
   };
 
   useEffect(() => {
-    // [FIXED: Use API_URL]
     fetch(`${API_URL}/api/data`).then(res => res.json()).then(data => { setIncidents(data.incidents); setUnits(data.units); });
 
     socket.on('incident_alert', (data) => {
       setIncidents(data.incidents);
       setUnits(data.units);
-      if (data.newIncident) {
+      if (data.newIncident && isValidCoord(data.newIncident.location?.coordinates)) {
         focusOnIncident(data.newIncident);
         if (data.newIncident.severity > 7) { setFlash(true); setTimeout(() => setFlash(false), 800); }
       }
@@ -140,22 +148,45 @@ export default function SurveillanceDashboard() {
           <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap" />
           <MapController center={mapCenter} zoom={mapZoom} shouldFly={shouldFly} />
           
-          {incidents.map((inc) => (
-            <React.Fragment key={inc._id}>
-              <Marker position={inc.location.coordinates} icon={incidentIcon} eventHandlers={{ click: () => focusOnIncident(inc) }} />
-              {inc.assignedUnit && (
-                <Polyline 
-                    positions={[inc.location.coordinates, inc.assignedUnit.coordinates]} 
-                    pathOptions={{ color: '#0ea5e9', dashArray: '5, 8', weight: 2, opacity: 0.6 }} 
+          {incidents.map((inc) => {
+            // GUARD: Skip rendering if location is invalid
+            if (!isValidCoord(inc?.location?.coordinates)) return null;
+
+            return (
+              <React.Fragment key={inc._id}>
+                <Marker 
+                  position={inc.location.coordinates as [number, number]} 
+                  icon={incidentIcon} 
+                  eventHandlers={{ click: () => focusOnIncident(inc) }} 
                 />
-              )}
-            </React.Fragment>
-          ))}
-          {units.map((unit) => (
-            <Marker key={unit._id} position={unit.coordinates} icon={unit.type === 'FIRE' ? fireIcon : unit.type === 'MEDICAL' ? medicalIcon : policeIcon}>
-               <Popup><strong>{unit.name}</strong><br />{unit.type}</Popup>
-            </Marker>
-          ))}
+                {/* GUARD: Only render Polyline if assignedUnit HAS coordinates */}
+                {inc.assignedUnit && isValidCoord(inc.assignedUnit.coordinates) && (
+                  <Polyline 
+                      positions={[
+                        inc.location.coordinates as [number, number], 
+                        inc.assignedUnit.coordinates as [number, number]
+                      ]} 
+                      pathOptions={{ color: '#0ea5e9', dashArray: '5, 8', weight: 2, opacity: 0.6 }} 
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
+
+          {units.map((unit) => {
+             // GUARD: Skip rendering if unit location is invalid
+             if (!isValidCoord(unit?.coordinates)) return null;
+
+             return (
+              <Marker 
+                  key={unit._id} 
+                  position={unit.coordinates as [number, number]} 
+                  icon={unit.type === 'FIRE' ? fireIcon : unit.type === 'MEDICAL' ? medicalIcon : policeIcon}
+              >
+                <Popup><strong>{unit.name}</strong><br />{unit.type}</Popup>
+              </Marker>
+             );
+          })}
         </MapContainer>
 
         {/* HEADER OVERLAY */}
