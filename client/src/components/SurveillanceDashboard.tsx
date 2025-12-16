@@ -33,8 +33,8 @@ const incidentIcon = new L.DivIcon({
       </div>
     </div>
   `,
-  iconSize: [50, 50],   // Much larger click area
-  iconAnchor: [25, 25], // Centered correctly
+  iconSize: [50, 50],
+  iconAnchor: [25, 25],
 }) as any;
 
 
@@ -42,7 +42,6 @@ const policeIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div styl
 const fireIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#ef4444; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #ef4444;"></div>` }) as any;
 const medicalIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#22c55e; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #22c55e;"></div>` }) as any;
 
-// Helper to validate coordinates
 const isValidCoord = (coord: any) => Array.isArray(coord) && coord.length === 2 && coord[0] != null && coord[1] != null;
 
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -77,18 +76,42 @@ export default function SurveillanceDashboard() {
   const [flash, setFlash] = useState(false);
   const [advisoryStatus, setAdvisoryStatus] = useState('');
 
-  // Mobile Drawer State
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   const DEFAULT_VIEW: [number, number] = [28.6139, 77.2090]; 
 
+  // --- UPDATED RESET HANDLER WITH SECURITY KEY ---
   const handleResetSystem = async () => {
-    if(!confirm("⚠️ RESET SYSTEM?\nThis will clear all incidents and advisories.")) return;
-    await fetch(`${API_URL}/api/clear`, { method: 'DELETE' });
-    setSelectedIncident(null);
-    setIsPanelOpen(false);
-    handleResetView();
+    // 1. Prompt User for Key
+    const key = prompt("🔒 SECURITY PROTOCOL\nEnter Admin Key to confirm system wipe:");
+    
+    if (!key) return; // User pressed Cancel
+
+    try {
+      // 2. Send Key in Headers
+      const res = await fetch(`${API_URL}/api/clear`, { 
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': key // Send key securely in header
+        }
+      });
+
+      if (res.ok) {
+        setSelectedIncident(null);
+        setIsPanelOpen(false);
+        handleResetView();
+        alert("✅ System Reset Successful");
+      } else {
+        // 3. Handle Unauthorized Access
+        alert("❌ ACCESS DENIED: Invalid Security Key");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("❌ Error connecting to server");
+    }
   };
+  // ----------------------------------------------
 
   const handleResetView = () => {
     setMapCenter(DEFAULT_VIEW);
@@ -175,7 +198,6 @@ export default function SurveillanceDashboard() {
           <MapController center={mapCenter} zoom={mapZoom} shouldFly={shouldFly} />
           
           {incidents.map((inc) => {
-            // GUARD: Skip rendering if location is invalid
             if (!isValidCoord(inc?.location?.coordinates)) return null;
 
             return (
@@ -185,7 +207,6 @@ export default function SurveillanceDashboard() {
                   icon={incidentIcon} 
                   eventHandlers={{ click: () => focusOnIncident(inc) }} 
                 />
-                {/* GUARD: Only render Polyline if assignedUnit HAS coordinates */}
                 {inc.assignedUnit && isValidCoord(inc.assignedUnit.coordinates) && (
                   <Polyline 
                       positions={[
@@ -200,7 +221,6 @@ export default function SurveillanceDashboard() {
           })}
 
           {units.map((unit) => {
-             // GUARD: Skip rendering if unit location is invalid
              if (!isValidCoord(unit?.coordinates)) return null;
 
              return (

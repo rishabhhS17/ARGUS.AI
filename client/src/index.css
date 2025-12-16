@@ -1,8 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Leaflet Fixes */
-.leaflet-container {
-  background: #0f172a; /* Slate 900 */
+@layer base {
+  :root {
+    --background: 220 20% 6%;
+    --foreground: 210 20% 92%;
+    --card: 220 18% 9%;
+    --card-foreground: 210 20% 92%;
+    --popover: 220 18% 9%;
+    --popover-foreground: 210 20% 92%;
+    --primary: 200 80% 50%;
+    --primary-foreground: 220 20% 6%;
+    --secondary: 220 15% 14%;
+    --secondary-foreground: 210 20% 92%;
+    --muted: 220 15% 16%;
+    --muted-foreground: 215 15% 55%;
+    --accent: 260 50% 55%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 15% 18%;
+    --input: 220 15% 18%;
+    --ring: 200 80% 50%;
+    --radius: 0.5rem;
+    --alert-red: 0 65% 50%;
+    --alert-orange: 30 90% 50%;
+    --emerald-success: 160 70% 40%;
+    --font-display: 'IBM Plex Sans', sans-serif;
+    --font-body: 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body);
+  }
+  .leaflet-container {
+    background: #0f172a; 
+  }
 }

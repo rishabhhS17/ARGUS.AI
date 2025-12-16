@@ -23,7 +23,6 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 // [FIX 2: Initialize Gemini Client Correctly]
-// Ensure you have run: npm install @google/generative-ai
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Connect to MongoDB
@@ -40,7 +39,6 @@ app.post('/api/analyze', async (req, res) => {
     let parts = [];
     if (text) parts.push({ text });
     if (fileData) {
-        // Ensure fileData is the raw base64 string without headers
         parts.push({ 
             inlineData: { 
                 data: fileData, 
@@ -51,7 +49,6 @@ app.post('/api/analyze', async (req, res) => {
 
     let promptContext = "";
     
-    // Select Persona/Prompt based on task
     if (taskType === 'ADVISORY') {
         promptContext = `
             Context: You are ARGUS AI.
@@ -60,7 +57,6 @@ app.post('/api/analyze', async (req, res) => {
             Output: Just the text. No quotes.
         `;
     } else {
-        // DEFAULT DISASTER ANALYSIS
         promptContext = `
             You are ARGUS AI. Analyze the input for disaster management.
             Output Strict JSON:
@@ -81,11 +77,9 @@ app.post('/api/analyze', async (req, res) => {
         `;
     }
     
-    // Append context to parts (as text)
     parts.push({ text: promptContext });
 
-    // [FIX 2 Continued: Correct Model Instantiation]
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // Use 1.5-flash or 2.0-flash-exp if available
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     const result = await model.generateContent({
       contents: [{ role: 'user', parts }]
@@ -94,9 +88,7 @@ app.post('/api/analyze', async (req, res) => {
     const response = await result.response;
     const rawText = response.text();
     
-    // Return parsed JSON for analysis, or plain text for advisory
     if (taskType !== 'ADVISORY') {
-        // Clean markdown code blocks if Gemini returns them
         const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
         res.json(JSON.parse(cleaned));
     } else {
@@ -105,20 +97,17 @@ app.post('/api/analyze', async (req, res) => {
 
   } catch (err) {
     console.error("AI Processing Error:", err);
-    // Return the actual error message for debugging
     res.status(500).json({ error: "AI Analysis Failed", details: err.message });
   }
 });
 
 app.get('/api/data', async (req, res) => {
   try {
-    // Run all 3 queries simultaneously instead of waiting for each one
     const [incidents, units, advisories] = await Promise.all([
       Incident.find().populate('assignedUnit').sort({ timestamp: -1 }).lean(),
       ForceUnit.find().lean(),
-      Advisory.find().sort({ timestamp: -1 }).limit(50).lean() // Limit advisories to last 50
+      Advisory.find().sort({ timestamp: -1 }).limit(50).lean()
     ]);
-    
     res.json({ incidents, units, advisories });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -170,7 +159,23 @@ app.post('/api/advisory', async (req, res) => {
   }
 });
 
+// --- UPDATED CLEAR ROUTE WITH SECURITY CHECK ---
 app.delete('/api/clear', async (req, res) => {
+  // Get key from header
+  const clientKey = req.headers['x-admin-key'];
+  const serverKey = process.env.ADMIN_KEY; // Ensure you set ADMIN_KEY in .env
+
+  if (!serverKey) {
+    console.warn("⚠️ SECURITY WARNING: ADMIN_KEY not set in .env. Denying all reset requests.");
+    return res.status(500).json({ error: "Server misconfiguration" });
+  }
+
+  if (clientKey !== serverKey) {
+    console.log("❌ Unauthorized reset attempt. Invalid Key.");
+    return res.status(403).json({ error: "Invalid Admin Key" });
+  }
+
+  // If Key Matches: Proceed
   await Incident.deleteMany({});
   await ForceUnit.updateMany({}, { status: 'IDLE' });
   await Advisory.deleteMany({}); 
@@ -180,6 +185,7 @@ app.delete('/api/clear', async (req, res) => {
   
   res.json({ success: true });
 });
+// ----------------------------------------------
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
