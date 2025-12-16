@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const AdvisorySchema = new mongoose.Schema({
   message: String,
-  timestamp: { type: Date, default: Date.now },
+  timestamp: { type: Date, default: Date.now, index: true },
   author: { type: String, default: "Location Help Centre" },
   relatedIncidentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Incident' } // Optional: link to incident
 });

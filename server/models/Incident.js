@@ -19,7 +19,7 @@ const IncidentSchema = new mongoose.Schema({
   // ------------------
   status: { type: String, default: 'PENDING' }, 
   assignedUnit: { type: mongoose.Schema.Types.ObjectId, ref: 'ForceUnit' },
-  timestamp: { type: Date, default: Date.now }
+  timestamp: { type: Date, default: Date.now, index: true }
 });
 
 module.exports = mongoose.model('Incident', IncidentSchema);
