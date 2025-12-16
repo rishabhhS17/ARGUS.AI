@@ -11,7 +11,33 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const socket = io(API_URL);
 
 // --- ICONS ---
-const incidentIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="position:relative; width:24px; height:24px;"><div style="position:absolute; inset:0; background:rgba(239,68,68,0.5); border-radius:50%; animation:ping 1s infinite;"></div><div style="position:absolute; inset:6px; background:#ef4444; border:2px solid white; border-radius:50%;"></div></div>` }) as any;
+const incidentIcon = new L.DivIcon({
+  className: "bg-transparent",
+  html: `
+    <div style="position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
+      <div style="
+        position: absolute; 
+        width: 100%; 
+        height: 100%; 
+        background: rgba(239, 68, 68, 0.5); 
+        border-radius: 50%; 
+        animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+      "></div>
+      
+      <div style="position: relative; z-index: 10; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));">
+        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="#dc2626" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </div>
+    </div>
+  `,
+  iconSize: [50, 50],   // Much larger click area
+  iconAnchor: [25, 25], // Centered correctly
+}) as any;
+
+
 const policeIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#3b82f6; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #3b82f6;"></div>` }) as any;
 const fireIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#ef4444; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #ef4444;"></div>` }) as any;
 const medicalIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#22c55e; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #22c55e;"></div>` }) as any;
