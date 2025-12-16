@@ -112,9 +112,13 @@ app.post('/api/analyze', async (req, res) => {
 
 app.get('/api/data', async (req, res) => {
   try {
-    const incidents = await Incident.find().populate('assignedUnit').sort({ timestamp: -1 });
-    const units = await ForceUnit.find();
-    const advisories = await Advisory.find().sort({ timestamp: -1 });
+    // Run all 3 queries simultaneously instead of waiting for each one
+    const [incidents, units, advisories] = await Promise.all([
+      Incident.find().populate('assignedUnit').sort({ timestamp: -1 }).lean(),
+      ForceUnit.find().lean(),
+      Advisory.find().sort({ timestamp: -1 }).limit(50).lean() // Limit advisories to last 50
+    ]);
+    
     res.json({ incidents, units, advisories });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
