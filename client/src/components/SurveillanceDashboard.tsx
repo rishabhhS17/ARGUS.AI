@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import io from 'socket.io-client';
-import { Activity, Crosshair, MapPin, Eye, Volume2, Truck, CheckCircle2, Trash2, Maximize, Flame, Stethoscope, Megaphone, Loader2, ChevronDown } from 'lucide-react';
+import { Activity, Crosshair, MapPin, Eye, Volume2, Truck, CheckCircle2, Trash2, Maximize, Flame, Stethoscope, Megaphone, Loader2, ChevronDown,Shield } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { generateAdvisoryText } from '../services/gemini';
 
