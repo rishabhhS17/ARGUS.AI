@@ -136,7 +136,7 @@ export default function SurveillanceDashboard() {
 
     socket.on('units_updated', (newUnits) => setUnits(newUnits));
     return () => { socket.off('incident_alert'); socket.off('units_updated'); };
-  }, [units]); 
+  }, []); 
 
   return (
     <div className="flex flex-col md:flex-row h-full bg-slate-950 text-slate-200 relative overflow-hidden">
