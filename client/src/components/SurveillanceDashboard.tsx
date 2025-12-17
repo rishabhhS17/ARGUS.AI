@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import io from 'socket.io-client';
+
+import { getSocket } from "../services/socket";
+
 import { Activity, Crosshair, MapPin, Eye, Volume2, Truck, CheckCircle2, Trash2, Maximize, Flame, Stethoscope, Megaphone, Loader2, ChevronDown,Shield } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { generateAdvisoryText } from '../services/gemini';
 
 // --- ENV VAR HANDLING ---
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const socket = io(API_URL);
+const socket = getSocket();
+
 
 // --- ICONS ---
 const incidentIcon = new L.DivIcon({
@@ -172,20 +175,26 @@ export default function SurveillanceDashboard() {
   };
 
   useEffect(() => {
-    fetch(`${API_URL}/api/data`).then(res => res.json()).then(data => { setIncidents(data.incidents); setUnits(data.units); });
-
-    socket.on('incident_alert', (data) => {
+  fetch(`${API_URL}/api/data`)
+    .then(res => res.json())
+    .then(data => {
       setIncidents(data.incidents);
       setUnits(data.units);
-      if (data.newIncident && isValidCoord(data.newIncident.location?.coordinates)) {
-        focusOnIncident(data.newIncident);
-        if (data.newIncident.severity > 7) { setFlash(true); setTimeout(() => setFlash(false), 800); }
-      }
     });
 
-    socket.on('units_updated', (newUnits) => setUnits(newUnits));
-    return () => { socket.off('incident_alert'); socket.off('units_updated'); };
-  }, []); 
+  socket.on("incident_alert", (data) => {
+    setIncidents(data.incidents);
+    setUnits(data.units);
+  });
+
+  socket.on("units_updated", setUnits);
+
+  return () => {
+    socket.off("incident_alert");
+    socket.off("units_updated");
+  };
+}, []);
+
 
   return (
     <div className="flex flex-col md:flex-row h-full bg-slate-950 text-slate-200 relative overflow-hidden">

@@ -7,7 +7,8 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import io from "socket.io-client";
+import { getSocket } from "../services/socket";
+
 import { Flame, Stethoscope, Siren, Map as MapIcon } from "lucide-react"; // Removed unused 'Shield', 'Trash2'
 import "leaflet/dist/leaflet.css";
 import { API_URL } from "../services/gemini";
@@ -26,7 +27,7 @@ const medicalIcon = new L.DivIcon({
   html: `<div style="background:#22c55e; width:16px; height:16px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #22c55e;"></div>`,
 });
 
-const socket = io(API_URL);
+
 
 // Fix: Added explicit type for Leaflet Mouse Event
 function ClickHandler({
@@ -50,15 +51,20 @@ export default function UnitManager() {
     return `${prefix}-${100 + count + 1}`;
   };
 
-  useEffect(() => {
-    fetch(`${API_URL}/api/data`)
-      .then((res) => res.json())
-      .then((data) => setUnits(data.units));
-    socket.on("units_updated", (newUnits) => setUnits(newUnits));
-    return () => {
-      socket.off("units_updated");
-    };
-  }, []);
+ useEffect(() => {
+  const socket = getSocket();
+
+  fetch(`${API_URL}/api/data`)
+    .then(res => res.json())
+    .then(data => setUnits(data.units));
+
+  socket.on("units_updated", setUnits);
+
+  return () => {
+    socket.off("units_updated");
+  };
+}, []);
+
 
   const handleAddUnit = async (lat: number, lng: number) => {
     const name = unitName || getNextName(selectedType, units.length);

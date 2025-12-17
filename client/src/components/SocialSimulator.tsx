@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { processMediaOnClient, API_URL } from '../services/gemini'; // [FIXED: Import API_URL]
 import { Image, X, Loader2, Globe, ShieldAlert, Activity, MapPin } from 'lucide-react';
-import io from 'socket.io-client';
+import { getSocket } from "../services/socket";
 
-const socket = io(API_URL); // [FIXED: Use API_URL]
+
 
 export default function SocialSimulator() {
   const [text, setText] = useState('');
@@ -13,13 +13,24 @@ export default function SocialSimulator() {
   const [advisories, setAdvisories] = useState<any[]>([]);
 
   useEffect(() => {
-    // [FIXED: Use API_URL]
-    fetch(`${API_URL}/api/data`).then(res => res.json()).then(data => { setAdvisories(data.advisories || []); });
-    
-    socket.on('advisory_posted', (newAdvisory) => { setAdvisories(prev => [newAdvisory, ...prev]); });
-    socket.on('advisories_cleared', () => { setAdvisories([]); });
-    return () => { socket.off('advisory_posted'); socket.off('advisories_cleared'); };
-  }, []);
+  const socket = getSocket();
+
+  fetch(`${API_URL}/api/data`)
+    .then(res => res.json())
+    .then(data => setAdvisories(data.advisories || []));
+
+  socket.on("advisory_posted", (newAdvisory) => {
+    setAdvisories(prev => [newAdvisory, ...prev]);
+  });
+
+  socket.on("advisories_cleared", () => setAdvisories([]));
+
+  return () => {
+    socket.off("advisory_posted");
+    socket.off("advisories_cleared");
+  };
+}, []);
+
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
