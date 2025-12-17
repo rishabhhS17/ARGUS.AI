@@ -183,9 +183,15 @@ export default function SurveillanceDashboard() {
     });
 
   socket.on("incident_alert", (data) => {
-    setIncidents(data.incidents);
-    setUnits(data.units);
-  });
+  setIncidents(data.incidents);
+  setUnits(data.units);
+
+  if (data.newIncident && data.newIncident.severity > 7) {
+    setFlash(true);
+    setTimeout(() => setFlash(false), 800);
+  }
+});
+
 
   socket.on("units_updated", setUnits);
 
