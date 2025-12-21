@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Server, Map as MapIcon, ShieldCheck, Wifi, Loader2, AlertCircle } from 'lucide-react';
+import { Server,  ShieldCheck, Wifi, Loader2, AlertCircle } from 'lucide-react';
 
 // Use the same env var as your dashboard
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';

@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-
 import { getSocket } from "../services/socket";
-
-import { Activity, Crosshair, MapPin, Eye, Volume2, Truck, CheckCircle2, Trash2, Maximize, Flame, Stethoscope, Megaphone, Loader2, ChevronDown,Shield } from 'lucide-react';
+import { 
+  Activity, Crosshair, MapPin, Eye, Volume2, Truck, 
+  CheckCircle2, Trash2, Maximize, Flame, Stethoscope, 
+  Megaphone, Loader2, ChevronDown, Shield 
+} from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { generateAdvisoryText } from '../services/gemini';
 import SystemStatusSidebar from './SystemStatusSidebar';
@@ -12,7 +14,6 @@ import SystemStatusSidebar from './SystemStatusSidebar';
 // --- ENV VAR HANDLING ---
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const socket = getSocket();
-
 
 // --- ICONS ---
 const incidentIcon = new L.DivIcon({
@@ -41,11 +42,11 @@ const incidentIcon = new L.DivIcon({
   iconAnchor: [25, 25],
 }) as any;
 
-
 const policeIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#3b82f6; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #3b82f6;"></div>` }) as any;
 const fireIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#ef4444; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #ef4444;"></div>` }) as any;
 const medicalIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#22c55e; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #22c55e;"></div>` }) as any;
 
+// --- HELPERS ---
 const isValidCoord = (coord: any) => Array.isArray(coord) && coord.length === 2 && coord[0] != null && coord[1] != null;
 
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -81,23 +82,23 @@ export default function SurveillanceDashboard() {
   const [advisoryStatus, setAdvisoryStatus] = useState('');
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-const [isMapReady, setIsMapReady] = useState(false);
+  
+  // Cleaned up: Removed isMapReady state as setIsMapReady was never used
+  
   const DEFAULT_VIEW: [number, number] = [28.6139, 77.2090]; 
 
-  // --- UPDATED RESET HANDLER WITH SECURITY KEY ---
+  // --- RESET HANDLER ---
   const handleResetSystem = async () => {
-    // 1. Prompt User for Key
     const key = prompt("🔒 SECURITY PROTOCOL\nEnter Admin Key to confirm system wipe:");
     
-    if (!key) return; // User pressed Cancel
+    if (!key) return; 
 
     try {
-      // 2. Send Key in Headers
       const res = await fetch(`${API_URL}/api/clear`, { 
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': key // Send key securely in header
+          'x-admin-key': key 
         }
       });
 
@@ -107,7 +108,6 @@ const [isMapReady, setIsMapReady] = useState(false);
         handleResetView();
         alert("✅ System Reset Successful");
       } else {
-        // 3. Handle Unauthorized Access
         alert("❌ ACCESS DENIED: Invalid Security Key");
       }
     } catch (err) {
@@ -115,7 +115,6 @@ const [isMapReady, setIsMapReady] = useState(false);
       alert("❌ Error connecting to server");
     }
   };
-  // ----------------------------------------------
 
   const handleResetView = () => {
     setMapCenter(DEFAULT_VIEW);
@@ -176,37 +175,38 @@ const [isMapReady, setIsMapReady] = useState(false);
   };
 
   useEffect(() => {
-  fetch(`${API_URL}/api/data`)
-    .then(res => res.json())
-    .then(data => {
+    fetch(`${API_URL}/api/data`)
+      .then(res => res.json())
+      .then(data => {
+        setIncidents(data.incidents);
+        setUnits(data.units);
+      });
+
+    socket.on("incident_alert", (data) => {
       setIncidents(data.incidents);
       setUnits(data.units);
+
+      if (data.newIncident && data.newIncident.severity > 7) {
+        setFlash(true);
+        setTimeout(() => setFlash(false), 800);
+      }
     });
 
-  socket.on("incident_alert", (data) => {
-  setIncidents(data.incidents);
-  setUnits(data.units);
+    socket.on("units_updated", setUnits);
 
-  if (data.newIncident && data.newIncident.severity > 7) {
-    setFlash(true);
-    setTimeout(() => setFlash(false), 800);
-  }
-});
-
-
-  socket.on("units_updated", setUnits);
-
-  return () => {
-    socket.off("incident_alert");
-    socket.off("units_updated");
-  };
-}, []);
-
+    return () => {
+      socket.off("incident_alert");
+      socket.off("units_updated");
+    };
+  }, []);
 
   return (
     <div className="flex flex-col md:flex-row h-full bg-slate-950 text-slate-200 relative overflow-hidden">
       <div className={`absolute inset-0 bg-red-500/20 z-[9999] pointer-events-none transition-opacity duration-500 ${flash ? 'opacity-100' : 'opacity-0'}`} />
-<SystemStatusSidebar isMapReady={isMapReady} />
+      
+      {/* Sidebar: Passed literal true since map loads immediately */}
+      <SystemStatusSidebar isMapReady={true} />
+      
       {/* MAP AREA */}
       <div className="flex-1 relative h-full w-full">
         <MapContainer center={DEFAULT_VIEW} zoom={11} style={{ height: '100%', width: '100%' }} zoomControl={false}>
