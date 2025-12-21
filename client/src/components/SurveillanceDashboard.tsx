@@ -7,6 +7,7 @@ import { getSocket } from "../services/socket";
 import { Activity, Crosshair, MapPin, Eye, Volume2, Truck, CheckCircle2, Trash2, Maximize, Flame, Stethoscope, Megaphone, Loader2, ChevronDown,Shield } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { generateAdvisoryText } from '../services/gemini';
+import SystemStatusSidebar from './SystemStatusSidebar';
 
 // --- ENV VAR HANDLING ---
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -80,7 +81,7 @@ export default function SurveillanceDashboard() {
   const [advisoryStatus, setAdvisoryStatus] = useState('');
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-
+const [isMapReady, setIsMapReady] = useState(false);
   const DEFAULT_VIEW: [number, number] = [28.6139, 77.2090]; 
 
   // --- UPDATED RESET HANDLER WITH SECURITY KEY ---
@@ -205,7 +206,7 @@ export default function SurveillanceDashboard() {
   return (
     <div className="flex flex-col md:flex-row h-full bg-slate-950 text-slate-200 relative overflow-hidden">
       <div className={`absolute inset-0 bg-red-500/20 z-[9999] pointer-events-none transition-opacity duration-500 ${flash ? 'opacity-100' : 'opacity-0'}`} />
-
+<SystemStatusSidebar isMapReady={isMapReady} />
       {/* MAP AREA */}
       <div className="flex-1 relative h-full w-full">
         <MapContainer center={DEFAULT_VIEW} zoom={11} style={{ height: '100%', width: '100%' }} zoomControl={false}>
