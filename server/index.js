@@ -4,6 +4,8 @@ const express = require('express');
 const http = require('http');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+
 const { Server } = require('socket.io');
 
 // Load Models
@@ -12,6 +14,13 @@ const ForceUnit = require('./models/ForceUnit');
 const Advisory = require('./models/Advisory');
 
 const app = express();
+const aiLimiter = rateLimit({
+  windowMs: 30 * 60 * 1000, // 15 minutes
+  max: 10, 
+  message: { error: "Too many requests. Please wait 30 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false, 
+});
 
 app.use(cors());
 
@@ -31,7 +40,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/sentinel_db
   .catch(err => console.error("❌ MongoDB Error:", err));
 
 // Routes
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/analyze', aiLimiter, async (req, res) => {
   try {
     const { text, fileData, mimeType, taskType } = req.body;
     
