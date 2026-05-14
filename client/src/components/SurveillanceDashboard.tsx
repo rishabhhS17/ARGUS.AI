@@ -5,7 +5,7 @@ import { getSocket } from "../services/socket";
 import { 
   Activity, Crosshair, MapPin, Eye, Volume2, Truck, 
   CheckCircle2, Trash2, Maximize, Flame, Stethoscope, 
-  Megaphone, Loader2, ChevronDown, Shield 
+  Megaphone, Loader2, ChevronDown, Shield, Siren, X
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { generateAdvisoryText } from '../services/gemini';
@@ -80,6 +80,7 @@ export default function SurveillanceDashboard() {
   const [shouldFly, setShouldFly] = useState(false);
   const [flash, setFlash] = useState(false);
   const [advisoryStatus, setAdvisoryStatus] = useState('');
+  const [incomingAlert, setIncomingAlert] = useState<any | null>(null);
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   
@@ -186,9 +187,14 @@ export default function SurveillanceDashboard() {
       setIncidents(data.incidents);
       setUnits(data.units);
 
-      if (data.newIncident && data.newIncident.severity > 7) {
-        setFlash(true);
-        setTimeout(() => setFlash(false), 800);
+      if (data.newIncident) {
+        setIncomingAlert(data.newIncident);
+        setTimeout(() => setIncomingAlert(null), 9000);
+
+        if (data.newIncident.severity > 7) {
+          setFlash(true);
+          setTimeout(() => setFlash(false), 800);
+        }
       }
     });
 
@@ -203,6 +209,48 @@ export default function SurveillanceDashboard() {
   return (
     <div className="flex flex-col md:flex-row h-full bg-slate-950 text-slate-200 relative overflow-hidden">
       <div className={`absolute inset-0 bg-red-500/20 z-[9999] pointer-events-none transition-opacity duration-500 ${flash ? 'opacity-100' : 'opacity-0'}`} />
+      {incomingAlert && (
+        <div className="absolute top-20 left-1/2 z-[3000] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 animate-in slide-in-from-top-4 duration-300 md:top-6">
+          <div className="border border-red-500/70 bg-slate-950/95 shadow-[0_0_40px_rgba(239,68,68,0.25)] backdrop-blur rounded p-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded bg-red-500/15 p-2 text-red-400">
+                <Siren className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-bold tracking-widest text-red-400">NEW INCIDENT REGISTERED</p>
+                  <button
+                    onClick={() => setIncomingAlert(null)}
+                    className="rounded p-1 text-slate-500 transition hover:bg-slate-800 hover:text-white"
+                    aria-label="Dismiss incident alert"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <h3 className="mt-1 truncate text-lg font-bold uppercase text-white">{incomingAlert.type || 'Incident Alert'}</h3>
+                <p className="mt-1 line-clamp-2 text-sm text-slate-300">{incomingAlert.description || 'New incident requires operator review.'}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="rounded border border-red-800 bg-red-950/40 px-2 py-1 text-[10px] font-bold text-red-300">
+                    SEVERITY {incomingAlert.severity || 'N/A'}/10
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-400">
+                    {incomingAlert.location?.address || 'Location pending'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    focusOnIncident(incomingAlert);
+                    setIncomingAlert(null);
+                  }}
+                  className="mt-4 w-full rounded border border-cyan-700 bg-cyan-900/40 px-3 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-700 hover:text-white"
+                >
+                  FOCUS ON MAP
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Sidebar: Passed literal true since map loads immediately */}
       <SystemStatusSidebar isMapReady={true} />
