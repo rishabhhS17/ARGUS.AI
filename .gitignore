@@ -34,3 +34,10 @@ server/.env
 # Misc
 coverage/
 *.local
+
+# ENHANCEMENTS.md
+ENHANCEMENTS.md
+Questions.md
+RESUME_POINTS.md
+RESUME_WRTING.md
+RESUME.md
