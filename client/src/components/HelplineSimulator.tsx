@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { processMediaOnClient, API_URL } from "../services/gemini"; // [FIXED: Import API_URL]
+import { processMediaOnClient, readErrorMessage, API_URL } from "../services/gemini";
 import { Mic, Radio } from "lucide-react";
 
 export default function HelplineSimulator() {
   const [isRecording, setIsRecording] = useState(false);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [status, setStatus] = useState("IDLE");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const startRecord = async () => {
     try {
@@ -53,13 +54,15 @@ export default function HelplineSimulator() {
           source: "HELPLINE",
         }),
       });
-      if (!res.ok) throw new Error("Incident registration failed");
+      if (!res.ok) throw new Error(await readErrorMessage(res, "Incident registration failed"));
 
       setStatus("DISPATCHED");
       setTimeout(() => setStatus("IDLE"), 3000);
     } catch (error) {
       console.error(error);
+      setErrorMessage(error instanceof Error ? error.message : "System error");
       setStatus("ERROR");
+      setTimeout(() => setStatus("IDLE"), 6000);
     }
   };
 
@@ -109,7 +112,7 @@ export default function HelplineSimulator() {
             <span className="text-red-500">MICROPHONE ACCESS DENIED</span>
           )}
           {status === "ERROR" && (
-            <span className="text-red-500">SYSTEM ERROR</span>
+            <span className="block max-w-md text-base text-red-500">{errorMessage || "SYSTEM ERROR"}</span>
           )}
         </p>
       </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { processMediaOnClient, API_URL } from '../services/gemini';
+import { processMediaOnClient, readErrorMessage, API_URL } from '../services/gemini';
 import { useLiveData } from '../services/liveData';
 import { Image, X, Loader2, Globe, ShieldAlert, Activity, MapPin } from 'lucide-react';
 
@@ -8,7 +8,7 @@ export default function SocialSimulator() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [status, setStatus] = useState('IDLE');
-  const [lastResult, setLastResult] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
   const { advisories } = useLiveData();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,6 +23,7 @@ export default function SocialSimulator() {
   const handlePost = async () => {
     if (!text && !file) return;
     setStatus('PROCESSING');
+    setLastResult(null);
     try {
       const aiData = await processMediaOnClient(text, file);
       setStatus('PUBLISHING');
@@ -32,17 +33,23 @@ export default function SocialSimulator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...aiData, source: 'SOCIAL' })
       });
-      if (!res.ok) throw new Error('Incident registration failed');
+      if (!res.ok) throw new Error(await readErrorMessage(res, 'Incident registration failed'));
       const result = await res.json();
 
-      setLastResult(result.merged
-        ? `Corroborated an existing ${result.incident.type} report — now backed by ${result.incident.reportCount} sources.`
-        : `Registered as a new ${result.incident.type} incident.`);
+      setLastResult({
+        tone: 'ok',
+        text: result.merged
+          ? `Corroborated an existing ${result.incident.type} report — now backed by ${result.incident.reportCount} sources.`
+          : `Registered as a new ${result.incident.type} incident.`,
+      });
       setStatus('SENT');
       setTimeout(() => { setText(''); clearFile(); setStatus('IDLE'); }, 2000);
       setTimeout(() => setLastResult(null), 6000);
     } catch (e) {
-      console.error(e); setStatus('ERROR'); setTimeout(() => setStatus('IDLE'), 3000);
+      console.error(e);
+      // Keep the draft so the reporter can add the missing detail and post again.
+      setLastResult({ tone: 'error', text: e instanceof Error ? e.message : 'Post failed.' });
+      setStatus('IDLE');
     }
   };
 
@@ -98,7 +105,7 @@ export default function SocialSimulator() {
                 </button>
              </div>
              {lastResult && (
-               <p className="mt-3 text-xs font-mono text-sky-400">{lastResult}</p>
+               <p className={`mt-3 text-xs font-mono ${lastResult.tone === 'ok' ? 'text-sky-400' : 'text-red-400'}`}>{lastResult.text}</p>
              )}
           </div>
         </div>

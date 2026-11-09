@@ -1,6 +1,6 @@
 const Incident = require('../../models/Incident');
 const { haversineKm, isValidCoordinates } = require('../utils/geo');
-const { sanitizeIncidentAnalysis } = require('../utils/aiResponseParser');
+const { assertReportable, sanitizeIncidentAnalysis } = require('../utils/aiResponseParser');
 
 // Gemini's coordinates are estimates from free text, so two witnesses of the same fire can
 // be placed several hundred metres apart. 1.5 km catches that without merging neighbourhoods.
@@ -51,9 +51,10 @@ function normalizeSource(source) {
   return VALID_SOURCES.has(value) ? value : 'UNKNOWN';
 }
 
-// Turns an untrusted request body into a validated report.
+// Turns an untrusted request body into a validated report. Throws 422 when the report
+// does not say what happened and where; such reports are never registered.
 function toReport(body, receivedAt = new Date()) {
-  const analysis = sanitizeIncidentAnalysis(body);
+  const analysis = assertReportable(sanitizeIncidentAnalysis(body));
   return {
     ...analysis,
     category: classifyCategory(analysis.type, analysis.description),

@@ -1,4 +1,12 @@
-const DEFAULT_COORDINATES = [28.6139, 77.2090];
+// A report is only registered when it says what happened and where. Missing pieces are
+// left as null here (never filled with a default city or a placeholder) and then
+// rejected by assertReportable, so nothing lands on the map at a made-up location.
+
+const MIN_DESCRIPTION_LENGTH = 10;
+
+// Values the model (or a client) uses to mean "I don't know".
+const PLACEHOLDER = /^(unknown|unknown (location|place|area|incident|event)|n\/?a|none|null|nil|unspecified|not (specified|provided|mentioned|available|given)|no (location|place|incident)( (given|provided|mentioned))?|approximate location unavailable|location unavailable|tbd|-+)\.?$/i;
+const NON_INCIDENT_TYPE = /^(other|no incident|not an incident|non[- ]?incident|irrelevant|spam|test)$/i;
 
 function stripMarkdownFences(value) {
   return String(value || '')
@@ -10,15 +18,16 @@ function stripMarkdownFences(value) {
 }
 
 function parseIncidentAnalysis(rawText) {
-  const cleaned = stripMarkdownFences(rawText);
-
+  let parsed;
   try {
-    return sanitizeIncidentAnalysis(JSON.parse(cleaned));
+    parsed = JSON.parse(stripMarkdownFences(rawText));
   } catch (err) {
     err.statusCode = 502;
     err.publicMessage = 'AI returned an invalid incident analysis';
     throw err;
   }
+
+  return sanitizeIncidentAnalysis(parsed);
 }
 
 function sanitizeIncidentAnalysis(value) {
@@ -31,11 +40,11 @@ function sanitizeIncidentAnalysis(value) {
     : {};
 
   return {
-    type: asNonEmptyString(incident.type, 'Unknown Incident'),
+    type: asMeaningfulString(incident.type),
     severity: clampNumber(incident.severity, 1, 10, 5),
-    description: asNonEmptyString(incident.description, 'Incident details require operator review.'),
+    description: asMeaningfulString(incident.description),
     location: {
-      address: asNonEmptyString(location.address, 'Approximate location unavailable'),
+      address: asMeaningfulString(location.address),
       coordinates: asCoordinates(location.coordinates),
     },
     breakdown: {
@@ -48,6 +57,49 @@ function sanitizeIncidentAnalysis(value) {
   };
 }
 
+// Lists what a sanitized report is missing, in words a reporter can act on.
+function findMissingDetails(incident) {
+  const missing = [];
+
+  if (!incident.type || NON_INCIDENT_TYPE.test(incident.type)) {
+    missing.push('what happened (the type of incident)');
+  }
+  if (!incident.description || incident.description.length < MIN_DESCRIPTION_LENGTH) {
+    missing.push('a description of the incident');
+  }
+  if (!incident.location.address) {
+    missing.push('the name of the place where it happened');
+  } else if (!incident.location.coordinates) {
+    missing.push('a place that can be located on the map');
+  }
+
+  return missing;
+}
+
+function assertReportable(incident) {
+  const missing = findMissingDetails(incident);
+
+  if (missing.length > 0) {
+    const err = new Error(`Report rejected; missing: ${missing.join('; ')}`);
+    err.statusCode = 422;
+    err.publicMessage = `Report not registered. Please include ${joinList(missing)}.`;
+    throw err;
+  }
+
+  return incident;
+}
+
+function joinList(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+function asMeaningfulString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed && !PLACEHOLDER.test(trimmed) ? trimmed : null;
+}
+
 function asNonEmptyString(value, fallback) {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
 }
@@ -58,17 +110,17 @@ function asStringArray(value) {
     : [];
 }
 
+// Returns [lat, lng] or null. [0, 0] is rejected: it is what models emit for "no idea".
 function asCoordinates(value) {
-  if (!Array.isArray(value) || value.length !== 2) {
-    return DEFAULT_COORDINATES;
-  }
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  if (value[0] === null || value[1] === null || value[0] === '' || value[1] === '') return null;
 
   const lat = Number(value[0]);
   const lng = Number(value[1]);
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return DEFAULT_COORDINATES;
-  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (lat === 0 && lng === 0) return null;
 
   return [lat, lng];
 }
@@ -84,6 +136,8 @@ function clampNumber(value, min, max, fallback) {
 }
 
 module.exports = {
+  assertReportable,
+  findMissingDetails,
   parseIncidentAnalysis,
   sanitizeIncidentAnalysis,
   stripMarkdownFences,

@@ -28,8 +28,18 @@ export async function processMediaOnClient(text: string, file: File | null) {
     })
   });
 
-  if (!response.ok) throw new Error("Server Analysis Failed");
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Server Analysis Failed"));
   return await response.json();
+}
+
+// The server explains rejections (e.g. a report with no place named) in { error }.
+export async function readErrorMessage(response: Response, fallback: string) {
+  try {
+    const body = await response.json();
+    return typeof body?.error === 'string' && body.error ? body.error : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function generateAdvisoryText(incident: any) {
@@ -49,7 +59,7 @@ export async function generateAdvisoryText(incident: any) {
     })
   });
 
-  if (!response.ok) throw new Error("Advisory Gen Failed");
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Advisory Gen Failed"));
   const data = await response.json();
   return data.text;
 }

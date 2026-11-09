@@ -2,6 +2,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const { env } = require('../config/env');
 const {
+  assertReportable,
   parseIncidentAnalysis,
   stripMarkdownFences,
 } = require('../utils/aiResponseParser');
@@ -42,7 +43,8 @@ async function analyzeIncidentInput({ text, fileData, mimeType }) {
   });
 
   const rawText = result.response.text();
-  return parseIncidentAnalysis(rawText);
+  // Rejected here too, so the reporter learns what is missing before anything is posted.
+  return assertReportable(parseIncidentAnalysis(rawText));
 }
 
 async function generatePublicAdvisory(text) {
@@ -72,8 +74,8 @@ Use this exact shape:
   "severity": 1,
   "description": "Short operational summary",
   "location": {
-    "address": "Approximate address or area",
-    "coordinates": [28.6139, 77.2090]
+    "address": "Place named in the report, e.g. a street, landmark or neighbourhood, with its city",
+    "coordinates": [latitude, longitude]
   },
   "breakdown": {
     "evidence_source": "Text, image, audio, or mixed",
@@ -86,7 +88,11 @@ Use this exact shape:
 
 Rules:
 - Severity must be a number from 1 to 10.
-- Coordinates must be [latitude, longitude]. If uncertain, estimate near the described location.
+- Coordinates must be [latitude, longitude] for the place the report names.
+- Location must come from the input itself (words, a visible sign or landmark, or what a caller says).
+  If the input does not name or show an identifiable place, set "address" and "coordinates" to null.
+  Never fall back to a default city, a country centre, or [0, 0].
+- If the input does not describe an actual incident or emergency, set "type" and "description" to null.
 - Prefer concise, operator-friendly language.
 - Do not invent impossible certainty; use approximate wording when needed.
 `;
