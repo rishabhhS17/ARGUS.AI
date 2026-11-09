@@ -1,0 +1,23 @@
+# Render Blueprint for the Argus.AI backend.
+# Deploy via Render Dashboard -> New -> Blueprint, or configure a Web Service manually
+# using the rootDir / build / start values below.
+services:
+  - type: web
+    name: argus-ai-backend
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.7-flash
+      - key: ADMIN_KEY
+        sync: false
