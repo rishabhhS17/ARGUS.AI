@@ -61,7 +61,7 @@ In the critical moments following a disaster (fire, riot, flood), control rooms 
 * **Backend:** Node.js, Express.
 * **Database:** MongoDB (Atlas).
 * **Real-Time:** Socket.io.
-* **Artificial Intelligence:** Google Gemini 1.5 Flash (via @google/genai SDK).
+* **Artificial Intelligence:** Google Gemini 3.7 Flash (via @google/genai SDK).
 
 ---
 
