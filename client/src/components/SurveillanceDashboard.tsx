@@ -7,7 +7,7 @@ import {
   Megaphone, Loader2, ChevronDown, Shield, Siren, X, Users
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
-import { generateAdvisoryText, API_URL } from '../services/gemini';
+import { generateAdvisoryText, readErrorMessage, API_URL } from '../services/gemini';
 import { useLiveData } from '../services/liveData';
 import SystemStatusSidebar from './SystemStatusSidebar';
 
@@ -131,15 +131,6 @@ const medicalIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div sty
 // --- HELPERS ---
 const isValidCoord = (coord: any) => Array.isArray(coord) && coord.length === 2 && coord[0] != null && coord[1] != null;
 
-function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; 
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * (Math.PI/180)) * Math.cos(lat2 * (Math.PI/180)) * Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-}
-
 function MapController({ center, zoom, shouldFly }: { center: [number, number] | null, zoom: number, shouldFly: boolean }) {
   const map = useMap();
   useEffect(() => {
@@ -155,7 +146,9 @@ export default function SurveillanceDashboard() {
   const { incidents, units, loaded, refresh } = useLiveData();
   const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
   const [suggestedUnits, setSuggestedUnits] = useState<any[]>([]);
-  
+  const [actionError, setActionError] = useState('');
+  const [isActing, setIsActing] = useState(false);
+
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(11);
   const [shouldFly, setShouldFly] = useState(false);
@@ -232,36 +225,55 @@ export default function SurveillanceDashboard() {
     setMapCenter(incident.location.coordinates);
     setMapZoom(16);
     setShouldFly(true);
-    setIsPanelOpen(true); 
+    setIsPanelOpen(true);
+    setActionError('');
     setTimeout(() => setShouldFly(false), 2500);
-    
-    if (incident.status !== 'DISPATCHED') {
-      const incidentCoords = incident.location.coordinates;
-      const idleUnits = units
-        .filter(u => u.status === 'IDLE' && isValidCoord(u.coordinates))
-        .map(u => ({
-          ...u,
-          distance: getDistanceKm(incidentCoords[0], incidentCoords[1], u.coordinates[0], u.coordinates[1])
-        }));
+  };
 
-      const bestPolice = idleUnits.filter(u => u.type === 'POLICE').sort((a, b) => a.distance - b.distance)[0];
-      const bestFire = idleUnits.filter(u => u.type === 'FIRE').sort((a, b) => a.distance - b.distance)[0];
-      const bestMedical = idleUnits.filter(u => u.type === 'MEDICAL').sort((a, b) => a.distance - b.distance)[0];
-
-      setSuggestedUnits([bestPolice, bestFire, bestMedical].filter(u => u !== undefined));
+  // Incident actions share one shape: POST, surface the server's reason on failure
+  // (e.g. "That unit is no longer available"), then pull fresh state.
+  const runIncidentAction = async (path: string, body: object) => {
+    setIsActing(true);
+    setActionError('');
+    try {
+      const res = await fetch(`${API_URL}/api/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, 'Action failed'));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Action failed');
+    } finally {
+      setIsActing(false);
+      refresh();
     }
   };
 
-  const handleDeploy = async (unitId: string) => {
+  const handleDeploy = (unitId: string) => {
     if (!selectedIncident) return;
-    await fetch(`${API_URL}/api/deploy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ incidentId: selectedIncident._id, unitId })
-    });
     setSuggestedUnits([]);
-    refresh();
+    return runIncidentAction('deploy', { incidentId: selectedIncident._id, unitId });
   };
+
+  // Nearest-unit ranking happens on the server. Re-ask whenever the selection, its
+  // status, or the unit roster changes (a unit may have just been taken or freed).
+  const selectedId = selectedIncident?._id;
+  const selectedStatus = selectedIncident?.status;
+  useEffect(() => {
+    if (!selectedId || selectedStatus !== 'PENDING') {
+      setSuggestedUnits([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`${API_URL}/api/incidents/${selectedId}/suggestions`)
+      .then((res) => (res.ok ? res.json() : { suggestions: [] }))
+      .then((data) => { if (!cancelled) setSuggestedUnits(data.suggestions || []); })
+      .catch(() => { if (!cancelled) setSuggestedUnits([]); });
+
+    return () => { cancelled = true; };
+  }, [selectedId, selectedStatus, units]);
 
   // Polls replace socket pushes, so "something happened" is worked out by diffing
   // snapshots: an unseen id is a new incident, a higher reportCount is a corroboration.
@@ -535,14 +547,18 @@ export default function SurveillanceDashboard() {
                                </div>
                                <div>
                                  <div className="text-xs font-bold text-white">{unit.name}</div>
-                                 <div className="text-[10px] text-slate-500">{unit.distance.toFixed(1)} km away</div>
+                                 <div className="text-[10px] text-slate-500">{unit.distanceKm.toFixed(1)} km away</div>
                                </div>
                             </div>
-                            <button onClick={() => handleDeploy(unit._id)} className="text-[10px] bg-cyan-900 text-cyan-400 px-3 py-1.5 rounded border border-cyan-700 hover:bg-cyan-600 hover:text-white transition font-bold">DEPLOY</button>
+                            <button onClick={() => handleDeploy(unit._id)} disabled={isActing} className="text-[10px] bg-cyan-900 text-cyan-400 px-3 py-1.5 rounded border border-cyan-700 hover:bg-cyan-600 hover:text-white transition font-bold disabled:opacity-50">DEPLOY</button>
                          </div>
                        ))
                      )}
                    </div>
+                 )}
+
+                 {actionError && (
+                   <p className="mt-2 text-[11px] font-mono text-red-400">{actionError}</p>
                  )}
               </div>
             </div>
