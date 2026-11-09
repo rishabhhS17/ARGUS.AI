@@ -4,17 +4,42 @@ import L from 'leaflet';
 import {
   Activity, Crosshair, MapPin, Eye, Volume2, Truck,
   CheckCircle2, Trash2, Maximize, Flame, Stethoscope,
-  Megaphone, Loader2, ChevronDown, Shield, Siren, X
+  Megaphone, Loader2, ChevronDown, Shield, Siren, X, Users
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { generateAdvisoryText, API_URL } from '../services/gemini';
 import { useLiveData } from '../services/liveData';
 import SystemStatusSidebar from './SystemStatusSidebar';
 
+// --- CORROBORATION STYLING ---
+const VERIFICATION_STYLES: Record<string, { hex: string; text: string; bar: string; border: string }> = {
+  CONFIRMED: { hex: '#ef4444', text: 'text-red-400', bar: 'bg-red-500', border: 'border-red-800' },
+  CORROBORATED: { hex: '#f97316', text: 'text-orange-400', bar: 'bg-orange-500', border: 'border-orange-800' },
+  UNCONFIRMED: { hex: '#f59e0b', text: 'text-amber-400', bar: 'bg-amber-500', border: 'border-amber-800' },
+};
+const verificationStyle = (v?: string) => VERIFICATION_STYLES[v || 'UNCONFIRMED'] || VERIFICATION_STYLES.UNCONFIRMED;
+
+function timeAgo(value: string | Date) {
+  const seconds = Math.max(0, (Date.now() - new Date(value).getTime()) / 1000);
+  if (seconds < 60) return `${Math.floor(seconds)}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  return `${Math.floor(seconds / 3600)}h ago`;
+}
+
 // --- ICONS ---
-const incidentIcon = new L.DivIcon({
-  className: "bg-transparent",
-  html: `
+// One marker per correlated incident; the badge shows how many reports back it.
+const incidentIconCache = new Map<string, L.DivIcon>();
+function getIncidentIcon(reportCount: number, verification?: string) {
+  const key = `${reportCount}|${verification}`;
+  const cached = incidentIconCache.get(key);
+  if (cached) return cached;
+
+  const badge = reportCount > 1
+    ? `<div style="position:absolute; top:0; right:-4px; z-index:20; min-width:22px; height:22px; padding:0 5px; box-sizing:border-box; border-radius:11px; background:#0f172a; border:2px solid ${verificationStyle(verification).hex}; color:#fff; font:700 11px/18px ui-monospace,monospace; text-align:center;">${reportCount > 99 ? '99+' : reportCount}</div>`
+    : '';
+  const icon = new L.DivIcon({
+    className: "bg-transparent",
+    html: `${badge}
     <div style="position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
       <div style="
         position: absolute; 
@@ -34,9 +59,70 @@ const incidentIcon = new L.DivIcon({
       </div>
     </div>
   `,
-  iconSize: [50, 50],
-  iconAnchor: [25, 25],
-}) as any;
+    iconSize: [50, 50],
+    iconAnchor: [25, 25],
+  });
+  incidentIconCache.set(key, icon);
+  return icon;
+}
+
+function CorroborationPanel({ incident }: { incident: any }) {
+  const count = incident.reportCount ?? 1;
+  const confidence = incident.confidence ?? 35;
+  const verification = incident.verification ?? 'UNCONFIRMED';
+  const style = verificationStyle(verification);
+  const reports: any[] = [...(incident.reports ?? [])].reverse();
+
+  return (
+    <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <Users className="w-5 h-5 text-cyan-500 mt-1" />
+          <div>
+            <div className="text-xs text-slate-500 font-mono">CORROBORATION</div>
+            <div className="text-sm text-slate-200">
+              Backed by <span className="font-bold text-white">{count}</span> {count === 1 ? 'report' : 'reports'}
+            </div>
+          </div>
+        </div>
+        <span className={`text-[10px] px-2 py-0.5 rounded border font-mono font-bold ${style.text} ${style.border}`}>{verification}</span>
+      </div>
+
+      <div>
+        <div className="flex justify-between text-[10px] font-mono text-slate-500 mb-1">
+          <span>CONFIDENCE</span><span className={style.text}>{confidence}%</span>
+        </div>
+        <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div className={`h-full ${style.bar} transition-all duration-500`} style={{ width: `${confidence}%` }} />
+        </div>
+      </div>
+
+      {incident.sources?.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {incident.sources.map((s: string) => (
+            <span key={s} className="text-[10px] font-mono bg-slate-800 border border-slate-700 px-2 rounded-full">{s}</span>
+          ))}
+        </div>
+      )}
+
+      {reports.length > 0 && (
+        <ul className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+          {reports.map((r, i) => (
+            <li key={`${r.receivedAt}-${i}`} className="text-[11px] bg-slate-900 border border-slate-800 rounded p-2">
+              <div className="flex justify-between font-mono text-slate-500">
+                <span>{r.source}</span><span>{timeAgo(r.receivedAt)}</span>
+              </div>
+              <p className="text-slate-300 line-clamp-2 mt-0.5">{r.description}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {count > reports.length && reports.length > 0 && (
+        <p className="text-[10px] text-slate-500 font-mono">Showing latest {reports.length} of {count}</p>
+      )}
+    </div>
+  );
+}
 
 const policeIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#3b82f6; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #3b82f6;"></div>` }) as any;
 const fireIcon = new L.DivIcon({ className: 'bg-transparent', html: `<div style="background:#ef4444; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 10px #ef4444;"></div>` }) as any;
@@ -76,9 +162,10 @@ export default function SurveillanceDashboard() {
   const [flash, setFlash] = useState(false);
   const [advisoryStatus, setAdvisoryStatus] = useState('');
   const [incomingAlert, setIncomingAlert] = useState<any | null>(null);
+  const [alertKind, setAlertKind] = useState<'NEW' | 'CORROBORATED'>('NEW');
   const alertTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  // Incident ids from the previous poll; null until the first snapshot lands.
-  const seenRef = useRef<Set<string> | null>(null);
+  // incident id -> reportCount from the previous poll; null until the first snapshot lands.
+  const seenRef = useRef<Map<string, number> | null>(null);
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   
@@ -177,22 +264,27 @@ export default function SurveillanceDashboard() {
   };
 
   // Polls replace socket pushes, so "something happened" is worked out by diffing
-  // snapshots: an id that was not in the previous poll is a new incident.
+  // snapshots: an unseen id is a new incident, a higher reportCount is a corroboration.
   useEffect(() => {
     if (!loaded) return;
 
     const previous = seenRef.current;
-    seenRef.current = new Set(incidents.map((i) => i._id));
+    seenRef.current = new Map(incidents.map((i) => [i._id, i.reportCount ?? 1]));
     if (!previous) return; // first snapshot: existing incidents are not news
 
     const fresh = incidents.find((i) => !previous.has(i._id));
-    if (!fresh) return;
+    const corroborated = fresh ? undefined : incidents.find(
+      (i) => (i.reportCount ?? 1) > (previous.get(i._id) ?? Infinity),
+    );
+    const target = fresh || corroborated;
+    if (!target) return;
 
-    setIncomingAlert(fresh);
+    setAlertKind(fresh ? 'NEW' : 'CORROBORATED');
+    setIncomingAlert(target);
     clearTimeout(alertTimerRef.current);
     alertTimerRef.current = setTimeout(() => setIncomingAlert(null), 9000);
 
-    if (fresh.severity > 7) {
+    if (fresh && fresh.severity > 7) {
       setFlash(true);
       setTimeout(() => setFlash(false), 800);
     }
@@ -200,7 +292,7 @@ export default function SurveillanceDashboard() {
 
   useEffect(() => () => clearTimeout(alertTimerRef.current), []);
 
-  // Keep the open details panel in sync with the latest poll (or clear it after a reset).
+  // Keep the open details panel live as new reports merge in (or clear it after a reset).
   useEffect(() => {
     setSelectedIncident((prev: any) => (prev ? incidents.find((i) => i._id === prev._id) ?? null : prev));
   }, [incidents]);
@@ -217,7 +309,11 @@ export default function SurveillanceDashboard() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[10px] font-bold tracking-widest text-red-400">NEW INCIDENT REGISTERED</p>
+                  <p className="text-[10px] font-bold tracking-widest text-red-400">
+                    {alertKind === 'NEW'
+                      ? 'NEW INCIDENT REGISTERED'
+                      : `REPORT CORROBORATED · ${incomingAlert.reportCount} SOURCES`}
+                  </p>
                   <button
                     onClick={() => setIncomingAlert(null)}
                     className="rounded p-1 text-slate-500 transition hover:bg-slate-800 hover:text-white"
@@ -267,7 +363,7 @@ export default function SurveillanceDashboard() {
               <React.Fragment key={inc._id}>
                 <Marker 
                   position={inc.location.coordinates as [number, number]} 
-                  icon={incidentIcon}
+                  icon={getIncidentIcon(inc.reportCount ?? 1, inc.verification)}
                   eventHandlers={{ click: () => focusOnIncident(inc) }} 
                 />
                 {inc.assignedUnit && isValidCoord(inc.assignedUnit.coordinates) && (
@@ -368,6 +464,8 @@ export default function SurveillanceDashboard() {
                    <span className={`text-xs px-2 py-0.5 rounded border font-mono ${selectedIncident.severity > 7 ? 'bg-red-900/50 text-red-400 border-red-800' : 'bg-yellow-900/50 text-yellow-400 border-yellow-800'}`}>SEVERITY: {selectedIncident.severity}/10</span>
                 </div>
               </div>
+
+              <CorroborationPanel incident={selectedIncident} />
 
               <div className="bg-slate-950 p-3 rounded border border-slate-800 flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-blue-500 mt-1" />
