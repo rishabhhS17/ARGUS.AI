@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { processMediaOnClient, readErrorMessage, API_URL } from '../services/gemini';
+import { submitReport } from '../services/gemini';
 import { useLiveData } from '../services/liveData';
 import { Image, X, Loader2, Globe, ShieldAlert, Activity, MapPin } from 'lucide-react';
 
@@ -25,16 +25,7 @@ export default function SocialSimulator() {
     setStatus('PROCESSING');
     setLastResult(null);
     try {
-      const aiData = await processMediaOnClient(text, file);
-      setStatus('PUBLISHING');
-      
-      const res = await fetch(`${API_URL}/api/incident`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...aiData, source: 'SOCIAL' })
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, 'Incident registration failed'));
-      const result = await res.json();
+      const result = await submitReport(text, file, 'SOCIAL');
 
       setLastResult({
         tone: 'ok',

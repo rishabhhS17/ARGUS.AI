@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { processMediaOnClient, readErrorMessage, API_URL } from "../services/gemini";
+import { submitReport } from "../services/gemini";
 import { Mic, Radio } from "lucide-react";
 
 export default function HelplineSimulator() {
@@ -40,21 +40,8 @@ export default function HelplineSimulator() {
   const processCall = async (audioFile: File) => {
     setStatus("ANALYZING_VOICE");
     try {
-      const aiData = await processMediaOnClient(
-        "Urgent call. Extract location/severity.",
-        audioFile
-      );
-
-      const res = await fetch(`${API_URL}/api/incident`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...aiData,
-          description: "[VOICE CALL] " + aiData.description,
-          source: "HELPLINE",
-        }),
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, "Incident registration failed"));
+      // The server tags helpline reports with "[VOICE CALL]" itself.
+      await submitReport("Urgent call. Extract location/severity.", audioFile, "HELPLINE");
 
       setStatus("DISPATCHED");
       setTimeout(() => setStatus("IDLE"), 3000);

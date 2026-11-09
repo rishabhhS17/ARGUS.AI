@@ -2,33 +2,37 @@
 // Determine Backend URL (Local vs Prod)
  export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-export async function processMediaOnClient(text: string, file: File | null) {
+export type ReportSource = 'SOCIAL' | 'HELPLINE';
+
+export interface IngestResult {
+  merged: boolean;
+  distanceKm: number | null;
+  incident: any;
+}
+
+// Sends a raw citizen report to the server, which analyzes it with Gemini, validates it
+// and correlates it in one request. The client never builds the incident record itself.
+export async function submitReport(text: string, file: File | null, source: ReportSource): Promise<IngestResult> {
   let fileData = null;
   let mimeType = null;
 
-  // 1. Process media on client to Base64
   if (file) {
-    fileData = await new Promise<string>((resolve) => {
+    fileData = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = () => reject(new Error('Could not read the attached file.'));
       reader.readAsDataURL(file);
     });
     mimeType = file.type;
   }
 
-  // 2. Send to YOUR server (Proxy)
-  const response = await fetch(`${API_URL}/api/analyze`, {
+  const response = await fetch(`${API_URL}/api/ingest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-        text, 
-        fileData, 
-        mimeType, 
-        taskType: 'ANALYSIS' 
-    })
+    body: JSON.stringify({ text, fileData, mimeType, source })
   });
 
-  if (!response.ok) throw new Error(await readErrorMessage(response, "Server Analysis Failed"));
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Report could not be submitted"));
   return await response.json();
 }
 
