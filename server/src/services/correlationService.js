@@ -5,8 +5,26 @@ const { assertReportable, sanitizeIncidentAnalysis } = require('../utils/aiRespo
 // Gemini's coordinates are estimates from free text, so two witnesses of the same fire can
 // be placed several hundred metres apart. 1.5 km catches that without merging neighbourhoods.
 const CORRELATION_RADIUS_KM = 1.5;
-// A report joins an incident only while that incident is still receiving reports.
-const CORRELATION_WINDOW_MS = 90 * 60 * 1000;
+// How long an incident stays open to new reports is driven by its lifecycle, not a fixed
+// clock: it accepts corroboration until an operator marks it RESOLVED. The quiet period
+// below is only a safety net for incidents nobody resolved. It is measured from the
+// LATEST report (a sliding window), so an event people keep reporting stays open, and it
+// depends on how long that kind of event realistically keeps producing reports.
+const HOUR_MS = 60 * 60 * 1000;
+const QUIET_PERIOD_MS_BY_CATEGORY = {
+  NATURAL_DISASTER: 24 * HOUR_MS, // floods, quakes: reports trickle in over a day
+  FIRE: 6 * HOUR_MS,              // burns, smoulders, gets re-reported for hours
+  HAZMAT: 6 * HOUR_MS,            // leaks and spills linger until contained
+  CRIME: 3 * HOUR_MS,             // riots and standoffs can run for hours
+  ACCIDENT: 2 * HOUR_MS,          // cleared within a couple of hours
+  MEDICAL: 1 * HOUR_MS,           // a single, short emergency
+  OTHER: 2 * HOUR_MS,
+};
+const MAX_QUIET_PERIOD_MS = Math.max(...Object.values(QUIET_PERIOD_MS_BY_CATEGORY));
+
+function quietPeriodFor(category) {
+  return QUIET_PERIOD_MS_BY_CATEGORY[category] || QUIET_PERIOD_MS_BY_CATEGORY.OTHER;
+}
 const MAX_STORED_REPORTS = 50;
 const VALID_SOURCES = new Set(['SOCIAL', 'HELPLINE']);
 
@@ -97,7 +115,7 @@ function findBestMatch(report, candidates, now = report.receivedAt) {
   for (const incident of candidates) {
     if (incident.status === 'RESOLVED') continue;
     if (!isValidCoordinates(incident.location && incident.location.coordinates)) continue;
-    if (reportTime - lastActivity(incident) > CORRELATION_WINDOW_MS) continue;
+    if (reportTime - lastActivity(incident) > quietPeriodFor(report.category)) continue;
     if (!isSameEvent(report, incident)) continue;
 
     const distanceKm = haversineKm(report.location.coordinates, incident.location.coordinates);
@@ -189,7 +207,8 @@ function serialized(task) {
 function ingestReport(body) {
   return serialized(async () => {
     const report = toReport(body);
-    const cutoff = new Date(report.receivedAt.getTime() - CORRELATION_WINDOW_MS);
+    // Coarse DB pre-filter only; findBestMatch applies the per-category quiet period.
+    const cutoff = new Date(report.receivedAt.getTime() - MAX_QUIET_PERIOD_MS);
 
     const candidates = await Incident.find({
       status: { $ne: 'RESOLVED' },
@@ -220,13 +239,14 @@ function ingestReport(body) {
 
 module.exports = {
   CORRELATION_RADIUS_KM,
-  CORRELATION_WINDOW_MS,
+  QUIET_PERIOD_MS_BY_CATEGORY,
   buildMergedFields,
   buildNewIncident,
   classifyCategory,
   computeConfidence,
   findBestMatch,
   ingestReport,
+  quietPeriodFor,
   toReport,
   verificationFor,
 };

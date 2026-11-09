@@ -7,6 +7,7 @@ const {
   classifyCategory,
   computeConfidence,
   findBestMatch,
+  quietPeriodFor,
   toReport,
   verificationFor,
 } = require('../src/services/correlationService');
@@ -81,10 +82,29 @@ test('does not match the same category far away', () => {
   assert.equal(findBestMatch(report({ location: { address: 'x', coordinates: FAR } }), [existing]), null);
 });
 
-test('does not match an incident that went quiet beyond the window', () => {
-  const existing = incidentFrom(report());
-  const later = new Date(NOW.getTime() + 3 * 60 * 60 * 1000);
-  assert.equal(findBestMatch(report({}, later), [existing]), null);
+test('the quiet period depends on the kind of event, not one fixed clock', () => {
+  const HOUR = 60 * 60 * 1000;
+  assert.ok(quietPeriodFor('NATURAL_DISASTER') > quietPeriodFor('FIRE'));
+  assert.ok(quietPeriodFor('FIRE') > quietPeriodFor('MEDICAL'));
+  assert.equal(quietPeriodFor('SOMETHING_NEW'), quietPeriodFor('OTHER'));
+
+  // A fire quiet for 3h is still the same fire...
+  const fire = incidentFrom(report());
+  assert.ok(findBestMatch(report({}, new Date(NOW.getTime() + 3 * HOUR)), [fire]));
+  // ...but not after its quiet period.
+  assert.equal(findBestMatch(report({}, new Date(NOW.getTime() + quietPeriodFor('FIRE') + 1)), [fire]), null);
+
+  // An accident quiet for 3h is over; a new crash at the junction is a new incident.
+  const crash = { type: 'Road Accident', description: 'Two cars collided at the junction' };
+  const accident = incidentFrom(report(crash));
+  assert.equal(findBestMatch(report(crash, new Date(NOW.getTime() + 3 * HOUR)), [accident]), null);
+});
+
+test('the window slides: an incident that keeps getting reports stays open', () => {
+  const HOUR = 60 * 60 * 1000;
+  // First report long ago, but the latest one was 30 min before the new report.
+  const existing = incidentFrom(report(), { lastReportedAt: new Date(NOW.getTime() + 20 * HOUR) });
+  assert.ok(findBestMatch(report({}, new Date(NOW.getTime() + 20.5 * HOUR)), [existing]));
 });
 
 test('does not match resolved incidents', () => {
