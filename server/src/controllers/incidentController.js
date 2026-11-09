@@ -2,25 +2,23 @@ const Advisory = require('../../models/Advisory');
 const ForceUnit = require('../../models/ForceUnit');
 const Incident = require('../../models/Incident');
 const { markChanged } = require('../services/changeFeed');
+const { ingestReport } = require('../services/correlationService');
 const { env } = require('../config/env');
 
+// Every report is registered. It either opens a new UNCONFIRMED incident or corroborates
+// an existing one nearby; it is never dropped for lack of corroboration.
 async function createIncident(req, res, next) {
   try {
-    const { type, description, severity, location, breakdown, action_plan } = req.body;
-
-    const incident = await Incident.create({
-      type,
-      description,
-      severity,
-      location,
-      breakdown,
-      action_plan,
-      status: 'PENDING',
-      assignedUnit: null,
-    });
+    const { incident, merged, distanceKm } = await ingestReport(req.body || {});
+    await incident.populate('assignedUnit');
 
     markChanged();
-    return res.json({ success: true, incident });
+    return res.json({
+      success: true,
+      merged,
+      distanceKm: distanceKm === null ? null : Number(distanceKm.toFixed(3)),
+      incident,
+    });
   } catch (err) {
     return next(err);
   }

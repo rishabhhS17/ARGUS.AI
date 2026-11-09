@@ -1,14 +1,24 @@
 const mongoose = require('mongoose');
 
+// One raw citizen report that was folded into this incident.
+const ReportSchema = new mongoose.Schema({
+  source: { type: String, default: 'UNKNOWN' }, // SOCIAL | HELPLINE | UNKNOWN
+  type: String,
+  description: String,
+  severity: Number,
+  address: String,
+  coordinates: [Number],
+  receivedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
 const IncidentSchema = new mongoose.Schema({
-  type: String,         
-  description: String,  
-  severity: Number,     
+  type: String,
+  description: String,
+  severity: Number,
   location: {
     address: String,
-    coordinates: [Number] 
+    coordinates: [Number] // [lat, lng]; centroid of all merged reports
   },
-  // --- NEW FIELDS ---
   breakdown: {
     evidence_source: String,
     acoustics: [String],
@@ -16,10 +26,18 @@ const IncidentSchema = new mongoose.Schema({
     logistics_needed: [String]
   },
   action_plan: String,
-  // ------------------
-  status: { type: String, default: 'PENDING' }, 
+  status: { type: String, default: 'PENDING' },
   assignedUnit: { type: mongoose.Schema.Types.ObjectId, ref: 'ForceUnit' },
-  timestamp: { type: Date, default: Date.now, index: true }
+  timestamp: { type: Date, default: Date.now, index: true }, // first report
+
+  // --- Correlation ---
+  category: { type: String, default: 'OTHER' },
+  reports: { type: [ReportSchema], default: [] }, // most recent 50 kept
+  reportCount: { type: Number, default: 1 },     // total, including trimmed ones
+  sources: { type: [String], default: [] },      // distinct intake channels
+  confidence: { type: Number, default: 35 },     // 0-100
+  verification: { type: String, default: 'UNCONFIRMED' }, // UNCONFIRMED | CORROBORATED | CONFIRMED
+  lastReportedAt: { type: Date, default: Date.now, index: true },
 });
 
 module.exports = mongoose.model('Incident', IncidentSchema);

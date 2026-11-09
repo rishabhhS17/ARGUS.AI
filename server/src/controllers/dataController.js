@@ -17,7 +17,7 @@ async function getData(req, res, next) {
     }
 
     const [incidents, units, advisories] = await Promise.all([
-      Incident.find().populate('assignedUnit').sort({ timestamp: -1 }).lean(),
+      Incident.find().populate('assignedUnit').sort({ lastReportedAt: -1, timestamp: -1 }).lean(),
       ForceUnit.find().lean(),
       Advisory.find().sort({ timestamp: -1 }).limit(50).lean(),
     ]);
