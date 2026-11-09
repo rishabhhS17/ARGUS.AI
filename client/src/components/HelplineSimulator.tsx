@@ -50,6 +50,7 @@ export default function HelplineSimulator() {
         body: JSON.stringify({
           ...aiData,
           description: "[VOICE CALL] " + aiData.description,
+          source: "HELPLINE",
         }),
       });
       if (!res.ok) throw new Error("Incident registration failed");

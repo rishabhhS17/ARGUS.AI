@@ -8,6 +8,7 @@ export default function SocialSimulator() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [status, setStatus] = useState('IDLE');
+  const [lastResult, setLastResult] = useState<string | null>(null);
   const { advisories } = useLiveData();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -29,12 +30,17 @@ export default function SocialSimulator() {
       const res = await fetch(`${API_URL}/api/incident`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(aiData)
+        body: JSON.stringify({ ...aiData, source: 'SOCIAL' })
       });
       if (!res.ok) throw new Error('Incident registration failed');
+      const result = await res.json();
 
+      setLastResult(result.merged
+        ? `Corroborated an existing ${result.incident.type} report — now backed by ${result.incident.reportCount} sources.`
+        : `Registered as a new ${result.incident.type} incident.`);
       setStatus('SENT');
       setTimeout(() => { setText(''); clearFile(); setStatus('IDLE'); }, 2000);
+      setTimeout(() => setLastResult(null), 6000);
     } catch (e) {
       console.error(e); setStatus('ERROR'); setTimeout(() => setStatus('IDLE'), 3000);
     }
@@ -91,6 +97,9 @@ export default function SocialSimulator() {
                   {status === 'PROCESSING' || status === 'PUBLISHING' ? <><Loader2 className="w-4 h-4 animate-spin" /> Posting</> : status === 'SENT' ? "Posted" : "Post"}
                 </button>
              </div>
+             {lastResult && (
+               <p className="mt-3 text-xs font-mono text-sky-400">{lastResult}</p>
+             )}
           </div>
         </div>
 
