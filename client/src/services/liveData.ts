@@ -9,9 +9,10 @@ export interface LiveData {
   incidents: any[];
   units: any[];
   advisories: any[];
+  leads: any[]; // unplaced reports (city/region-level location)
 }
 
-const EMPTY: LiveData = { incidents: [], units: [], advisories: [] };
+const EMPTY: LiveData = { incidents: [], units: [], advisories: [], leads: [] };
 
 export function useLiveData(intervalMs = POLL_INTERVAL_MS) {
   const [data, setData] = useState<LiveData>(EMPTY);
@@ -42,6 +43,7 @@ export function useLiveData(intervalMs = POLL_INTERVAL_MS) {
         incidents: body.incidents || [],
         units: body.units || [],
         advisories: body.advisories || [],
+        leads: body.leads || [],
       });
       setLoaded(true);
     } catch {

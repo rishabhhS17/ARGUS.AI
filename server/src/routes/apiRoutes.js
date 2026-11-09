@@ -4,6 +4,7 @@ const { analyze } = require('../controllers/aiController');
 const { createAdvisory } = require('../controllers/advisoryController');
 const { getData } = require('../controllers/dataController');
 const { clearSystem, ingestIncident, resolveIncident } = require('../controllers/incidentController');
+const { attachLeadToIncident, dismissLeadReport, getLeadCandidates } = require('../controllers/leadController');
 const { createUnit, deployUnit, getDispatchSuggestions } = require('../controllers/unitController');
 const { aiLimiter, pollLimiter } = require('../middleware/rateLimiters');
 
@@ -18,6 +19,10 @@ router.get('/incidents/:id/suggestions', getDispatchSuggestions);
 router.post('/units', createUnit);
 router.post('/deploy', deployUnit);
 router.post('/resolve', resolveIncident);
+// Unplaced reports (city/region-level location)
+router.get('/leads/:id/candidates', getLeadCandidates);
+router.post('/leads/:id/attach', attachLeadToIncident);
+router.post('/leads/:id/dismiss', dismissLeadReport);
 router.post('/advisory', createAdvisory);
 router.delete('/clear', clearSystem);
 

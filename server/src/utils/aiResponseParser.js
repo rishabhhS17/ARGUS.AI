@@ -4,6 +4,17 @@
 
 const MIN_DESCRIPTION_LENGTH = 10;
 
+// How specific the named place is. exact/area can be pinned on the map; city/region name
+// a place too large to pin ("fire in Delhi") and are kept as unplaced reports instead.
+const PRECISIONS = ['exact', 'area', 'city', 'region'];
+const PLACEABLE_PRECISIONS = new Set(['exact', 'area']);
+// Reports that do not state a precision keep the pre-precision behaviour (pinned, 1.5 km).
+const DEFAULT_PRECISION = 'area';
+
+function isPlaceable(precision) {
+  return PLACEABLE_PRECISIONS.has(precision);
+}
+
 // Values the model (or a client) uses to mean "I don't know".
 const PLACEHOLDER = /^(unknown|unknown (location|place|area|incident|event)|n\/?a|none|null|nil|unspecified|not (specified|provided|mentioned|available|given)|no (location|place|incident)( (given|provided|mentioned))?|approximate location unavailable|location unavailable|tbd|-+)\.?$/i;
 const NON_INCIDENT_TYPE = /^(other|no incident|not an incident|non[- ]?incident|irrelevant|spam|test)$/i;
@@ -46,6 +57,7 @@ function sanitizeIncidentAnalysis(value) {
     location: {
       address: asMeaningfulString(location.address),
       coordinates: asCoordinates(location.coordinates),
+      precision: asPrecision(location.precision),
     },
     breakdown: {
       evidence_source: asNonEmptyString(breakdown.evidence_source, 'Unspecified'),
@@ -69,7 +81,9 @@ function findMissingDetails(incident) {
   }
   if (!incident.location.address) {
     missing.push('the name of the place where it happened');
-  } else if (!incident.location.coordinates) {
+  } else if (!incident.location.coordinates && isPlaceable(incident.location.precision)) {
+    // A specific place must be mappable. A city/region-level report may lack coordinates:
+    // it is never pinned, only kept as an unplaced report.
     missing.push('a place that can be located on the map');
   }
 
@@ -98,6 +112,11 @@ function asMeaningfulString(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed && !PLACEHOLDER.test(trimmed) ? trimmed : null;
+}
+
+function asPrecision(value) {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return PRECISIONS.includes(normalized) ? normalized : DEFAULT_PRECISION;
 }
 
 function asNonEmptyString(value, fallback) {
@@ -136,8 +155,10 @@ function clampNumber(value, min, max, fallback) {
 }
 
 module.exports = {
+  PRECISIONS,
   assertReportable,
   findMissingDetails,
+  isPlaceable,
   parseIncidentAnalysis,
   sanitizeIncidentAnalysis,
   stripMarkdownFences,

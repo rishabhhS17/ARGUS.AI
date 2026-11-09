@@ -5,9 +5,14 @@
 export type ReportSource = 'SOCIAL' | 'HELPLINE';
 
 export interface IngestResult {
+  // NEW / MERGED: placed on the map. UNPLACED: only a city or region was named, so it is
+  // kept for an operator to attach to an incident instead of being pinned.
+  outcome: 'NEW' | 'MERGED' | 'UNPLACED';
   merged: boolean;
-  distanceKm: number | null;
-  incident: any;
+  distanceKm?: number | null;
+  incident?: any;
+  lead?: any;
+  message?: string;
 }
 
 // Sends a raw citizen report to the server, which analyzes it with Gemini, validates it

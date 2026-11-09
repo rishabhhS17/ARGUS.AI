@@ -1,6 +1,7 @@
 const Advisory = require('../../models/Advisory');
 const ForceUnit = require('../../models/ForceUnit');
 const Incident = require('../../models/Incident');
+const Lead = require('../../models/Lead');
 const { getVersion } = require('../services/changeFeed');
 
 // Polled by every client view. `?since=<version>` returns a tiny "unchanged" reply without
@@ -16,13 +17,14 @@ async function getData(req, res, next) {
       return res.json({ unchanged: true, version });
     }
 
-    const [incidents, units, advisories] = await Promise.all([
+    const [incidents, units, advisories, leads] = await Promise.all([
       Incident.find().populate('assignedUnit').sort({ lastReportedAt: -1, timestamp: -1 }).lean(),
       ForceUnit.find().lean(),
       Advisory.find().sort({ timestamp: -1 }).limit(50).lean(),
+      Lead.find({ status: 'OPEN' }).sort({ receivedAt: -1 }).limit(50).lean(),
     ]);
 
-    return res.json({ version, incidents, units, advisories });
+    return res.json({ version, incidents, units, advisories, leads });
   } catch (err) {
     return next(err);
   }

@@ -8,6 +8,7 @@ const ReportSchema = new mongoose.Schema({
   severity: Number,
   address: String,
   coordinates: [Number],
+  precision: String, // exact | area | city | region
   receivedAt: { type: Date, default: Date.now },
 }, { _id: false });
 
@@ -17,8 +18,10 @@ const IncidentSchema = new mongoose.Schema({
   severity: Number,
   location: {
     address: String,
-    coordinates: [Number] // [lat, lng]; centroid of all merged reports
+    coordinates: [Number] // [lat, lng]; precision-weighted centre of merged reports
   },
+  locationPrecision: { type: String, default: 'area' }, // most precise report so far
+  locationWeight: { type: Number, default: null },      // sum of report weights behind the pin
   breakdown: {
     evidence_source: String,
     acoustics: [String],

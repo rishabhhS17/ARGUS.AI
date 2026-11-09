@@ -8,7 +8,7 @@ export default function SocialSimulator() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [status, setStatus] = useState('IDLE');
-  const [lastResult, setLastResult] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
+  const [lastResult, setLastResult] = useState<{ text: string; tone: 'ok' | 'warn' | 'error' } | null>(null);
   const { advisories } = useLiveData();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,6 +26,13 @@ export default function SocialSimulator() {
     setLastResult(null);
     try {
       const result = await submitReport(text, file, 'SOCIAL');
+
+      if (result.outcome === 'UNPLACED') {
+        // Logged, but not on the map: keep the draft so the reporter can add where exactly.
+        setLastResult({ tone: 'warn', text: result.message || 'Logged, but please add where exactly this is.' });
+        setStatus('IDLE');
+        return;
+      }
 
       setLastResult({
         tone: 'ok',
@@ -96,7 +103,7 @@ export default function SocialSimulator() {
                 </button>
              </div>
              {lastResult && (
-               <p className={`mt-3 text-xs font-mono ${lastResult.tone === 'ok' ? 'text-sky-400' : 'text-red-400'}`}>{lastResult.text}</p>
+               <p className={`mt-3 text-xs font-mono ${lastResult.tone === 'ok' ? 'text-sky-400' : lastResult.tone === 'warn' ? 'text-amber-400' : 'text-red-400'}`}>{lastResult.text}</p>
              )}
           </div>
         </div>

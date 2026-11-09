@@ -9,7 +9,9 @@ import {
 import 'leaflet/dist/leaflet.css';
 import { generateAdvisoryText, readErrorMessage, API_URL } from '../services/gemini';
 import { useLiveData } from '../services/liveData';
+import { timeAgo } from '../utils/time';
 import SystemStatusSidebar from './SystemStatusSidebar';
+import UnplacedReportsPanel from './UnplacedReportsPanel';
 
 // --- CORROBORATION STYLING ---
 const VERIFICATION_STYLES: Record<string, { hex: string; text: string; bar: string; border: string }> = {
@@ -18,13 +20,6 @@ const VERIFICATION_STYLES: Record<string, { hex: string; text: string; bar: stri
   UNCONFIRMED: { hex: '#f59e0b', text: 'text-amber-400', bar: 'bg-amber-500', border: 'border-amber-800' },
 };
 const verificationStyle = (v?: string) => VERIFICATION_STYLES[v || 'UNCONFIRMED'] || VERIFICATION_STYLES.UNCONFIRMED;
-
-function timeAgo(value: string | Date) {
-  const seconds = Math.max(0, (Date.now() - new Date(value).getTime()) / 1000);
-  if (seconds < 60) return `${Math.floor(seconds)}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  return `${Math.floor(seconds / 3600)}h ago`;
-}
 
 // --- ICONS ---
 // One marker per correlated incident; the badge shows how many reports back it.
@@ -143,7 +138,7 @@ function MapController({ center, zoom, shouldFly }: { center: [number, number] |
 }
 
 export default function SurveillanceDashboard() {
-  const { incidents, units, loaded, refresh } = useLiveData();
+  const { incidents, units, leads, loaded, refresh } = useLiveData();
   const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
   const [suggestedUnits, setSuggestedUnits] = useState<any[]>([]);
   const [actionError, setActionError] = useState('');
@@ -434,6 +429,9 @@ export default function SurveillanceDashboard() {
             <Trash2 className="w-4 h-4" /> <span className="hidden md:inline">RESET SYSTEM</span><span className="md:hidden">RESET</span>
           </button>
         </div>
+
+        {/* CITY/REGION-LEVEL REPORTS: not on the map until an operator attaches them */}
+        <UnplacedReportsPanel leads={leads} onChanged={refresh} />
 
         {/* RE-CENTER BUTTON */}
         <div className="absolute bottom-20 md:bottom-6 right-4 md:right-6 z-[1000]">

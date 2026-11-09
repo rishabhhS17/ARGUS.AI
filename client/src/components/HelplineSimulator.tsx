@@ -41,7 +41,14 @@ export default function HelplineSimulator() {
     setStatus("ANALYZING_VOICE");
     try {
       // The server tags helpline reports with "[VOICE CALL]" itself.
-      await submitReport("Urgent call. Extract location/severity.", audioFile, "HELPLINE");
+      const result = await submitReport("Urgent call. Extract location/severity.", audioFile, "HELPLINE");
+      if (result.outcome === "UNPLACED") {
+        // Logged for the operator, but the caller only named a city or region.
+        setErrorMessage(result.message || "Logged, but the exact location is still needed.");
+        setStatus("UNPLACED");
+        setTimeout(() => setStatus("IDLE"), 8000);
+        return;
+      }
 
       setStatus("DISPATCHED");
       setTimeout(() => setStatus("IDLE"), 3000);
@@ -94,6 +101,9 @@ export default function HelplineSimulator() {
             <span className="text-green-400 font-bold">
               INCIDENT LOGGED & DISPATCHED
             </span>
+          )}
+          {status === "UNPLACED" && (
+            <span className="block max-w-md text-base text-amber-400">{errorMessage}</span>
           )}
           {status === "MIC_ERROR" && (
             <span className="text-red-500">MICROPHONE ACCESS DENIED</span>

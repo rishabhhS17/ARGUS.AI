@@ -103,7 +103,8 @@ Use this exact shape:
   "description": "Short operational summary",
   "location": {
     "address": "Place named in the report, e.g. a street, landmark or neighbourhood, with its city",
-    "coordinates": [latitude, longitude]
+    "coordinates": [latitude, longitude],
+    "precision": "exact | area | city | region"
   },
   "breakdown": {
     "evidence_source": "Text, image, audio, or mixed",
@@ -120,6 +121,13 @@ Rules:
 - Location must come from the input itself (words, a visible sign or landmark, or what a caller says).
   If the input does not name or show an identifiable place, set "address" and "coordinates" to null.
   Never fall back to a default city, a country centre, or [0, 0].
+- "precision" says how specific the named place is:
+  "exact"  = a street address, building, junction or specific landmark;
+  "area"   = a neighbourhood, market, campus or locality;
+  "city"   = only a city or town is named (e.g. "a fire in Delhi");
+  "region" = only a state, district or larger area is named.
+  Judge it from what the input says, not from how confident you are in the coordinates.
+  For "city" or "region", give the centre coordinates of that city or region.
 - If the input does not describe an actual incident or emergency, set "type" and "description" to null.
 - Prefer concise, operator-friendly language.
 - Do not invent impossible certainty; use approximate wording when needed.

@@ -1,10 +1,45 @@
 const Incident = require('../../models/Incident');
 const { haversineKm, isValidCoordinates } = require('../utils/geo');
-const { assertReportable, sanitizeIncidentAnalysis } = require('../utils/aiResponseParser');
+const { assertReportable, isPlaceable, sanitizeIncidentAnalysis } = require('../utils/aiResponseParser');
 
-// Gemini's coordinates are estimates from free text, so two witnesses of the same fire can
-// be placed several hundred metres apart. 1.5 km catches that without merging neighbourhoods.
-const CORRELATION_RADIUS_KM = 1.5;
+// How specific a report's location is decides how far apart two reports may be and still
+// describe the same event, and how strongly a report pulls the incident's marker.
+// - radiusKm: Gemini estimates coordinates from free text, so even an "exact" place can
+//   be off by a few hundred metres; a neighbourhood can be off by ~1 km.
+// - weight: an exact address should move the pin more than "somewhere in the market".
+//   City/region reports have weight 0: they never move a pin. Their radius is only used to
+//   SUGGEST incidents an unplaced report may belong to; they are never merged automatically.
+const PRECISION = {
+  exact: { radiusKm: 0.5, weight: 1 },
+  area: { radiusKm: 1.5, weight: 0.4 },
+  city: { radiusKm: 25, weight: 0 },
+  region: { radiusKm: 150, weight: 0 },
+};
+const LEGACY_PRECISION = 'area'; // incidents created before precision existed
+
+function precisionOf(value) {
+  return PRECISION[value] ? value : LEGACY_PRECISION;
+}
+
+function radiusFor(precision) {
+  return PRECISION[precisionOf(precision)].radiusKm;
+}
+
+function weightFor(precision) {
+  return PRECISION[precisionOf(precision)].weight;
+}
+
+// The looser of the two decides: an exact report and a neighbourhood-level incident can be
+// ~1.5 km apart and still be the same event; two exact reports must be within 0.5 km.
+function matchRadiusKm(reportPrecision, incidentPrecision) {
+  return Math.max(radiusFor(reportPrecision), radiusFor(incidentPrecision));
+}
+
+function morePrecise(a, b) {
+  const order = ['exact', 'area', 'city', 'region'];
+  return order.indexOf(precisionOf(a)) <= order.indexOf(precisionOf(b)) ? precisionOf(a) : precisionOf(b);
+}
+
 // How long an incident stays open to new reports is driven by its lifecycle, not a fixed
 // clock: it accepts corroboration until an operator marks it RESOLVED. The quiet period
 // below is only a safety net for incidents nobody resolved. It is measured from the
@@ -25,6 +60,7 @@ const MAX_QUIET_PERIOD_MS = Math.max(...Object.values(QUIET_PERIOD_MS_BY_CATEGOR
 function quietPeriodFor(category) {
   return QUIET_PERIOD_MS_BY_CATEGORY[category] || QUIET_PERIOD_MS_BY_CATEGORY.OTHER;
 }
+
 const MAX_STORED_REPORTS = 50;
 const VALID_SOURCES = new Set(['SOCIAL', 'HELPLINE']);
 
@@ -69,9 +105,9 @@ function normalizeSource(source) {
   return VALID_SOURCES.has(value) ? value : 'UNKNOWN';
 }
 
-// Turns an untrusted request body into a validated report. Throws 422 when the report
-// does not say what happened and where; such reports are never registered.
-function toReport(body, receivedAt = new Date()) {
+// Turns an untrusted body into a validated report (any precision). Throws 422 when the
+// report does not say what happened and where.
+function toAnyReport(body, receivedAt = new Date()) {
   const analysis = assertReportable(sanitizeIncidentAnalysis(body));
   return {
     ...analysis,
@@ -81,6 +117,18 @@ function toReport(body, receivedAt = new Date()) {
   };
 }
 
+// Same, but only for reports specific enough to be pinned on the map.
+function toReport(body, receivedAt = new Date()) {
+  const report = toAnyReport(body, receivedAt);
+  if (!isPlaceable(report.location.precision)) {
+    const err = new Error(`Location too vague to place on the map: ${report.location.precision}`);
+    err.statusCode = 422;
+    err.publicMessage = 'Location too vague to place on the map.';
+    throw err;
+  }
+  return report;
+}
+
 function toStoredReport(report) {
   return {
     source: report.source,
@@ -88,7 +136,8 @@ function toStoredReport(report) {
     description: report.description,
     severity: report.severity,
     address: report.location.address,
-    coordinates: report.location.coordinates,
+    coordinates: report.location.coordinates || [],
+    precision: report.location.precision,
     receivedAt: report.receivedAt,
   };
 }
@@ -107,19 +156,25 @@ function isSameEvent(report, incident) {
   return true;
 }
 
+// An incident this report could belong to: open, still active for this kind of event,
+// and the same kind of event. Distance is checked separately by the caller.
+function isOpenCandidate(report, incident, now = report.receivedAt) {
+  if (incident.status === 'RESOLVED') return false;
+  if (!isValidCoordinates(incident.location && incident.location.coordinates)) return false;
+  if (new Date(now).getTime() - lastActivity(incident) > quietPeriodFor(report.category)) return false;
+  return isSameEvent(report, incident);
+}
+
 // Picks the nearest open incident that plausibly describes the same event, or null.
+// Only used for placeable (exact/area) reports.
 function findBestMatch(report, candidates, now = report.receivedAt) {
-  const reportTime = new Date(now).getTime();
   let best = null;
 
   for (const incident of candidates) {
-    if (incident.status === 'RESOLVED') continue;
-    if (!isValidCoordinates(incident.location && incident.location.coordinates)) continue;
-    if (reportTime - lastActivity(incident) > quietPeriodFor(report.category)) continue;
-    if (!isSameEvent(report, incident)) continue;
+    if (!isOpenCandidate(report, incident, now)) continue;
 
     const distanceKm = haversineKm(report.location.coordinates, incident.location.coordinates);
-    if (distanceKm > CORRELATION_RADIUS_KM) continue;
+    if (distanceKm > matchRadiusKm(report.location.precision, incident.locationPrecision)) continue;
     if (!best || distanceKm < best.distanceKm) best = { incident, distanceKm };
   }
 
@@ -129,12 +184,15 @@ function findBestMatch(report, candidates, now = report.receivedAt) {
 function buildNewIncident(report) {
   const sources = [report.source];
   const confidence = computeConfidence(1, sources.length);
+  const precision = precisionOf(report.location.precision);
 
   return {
     type: report.type,
     description: report.description,
     severity: report.severity,
-    location: report.location,
+    location: { address: report.location.address, coordinates: report.location.coordinates },
+    locationPrecision: precision,
+    locationWeight: weightFor(precision),
     breakdown: report.breakdown,
     action_plan: report.action_plan,
     status: 'PENDING',
@@ -161,10 +219,22 @@ function buildMergedFields(incident, report) {
   const sources = unionStrings(incident.sources, [report.source]);
   const confidence = computeConfidence(reportCount, sources.length);
 
-  // Running mean keeps the marker at the centre of everything witnesses described.
-  const [lat, lng] = incident.location.coordinates;
-  const [rLat, rLng] = report.location.coordinates;
-  const coordinates = [lat + (rLat - lat) / reportCount, lng + (rLng - lng) / reportCount];
+  // Weighted running mean: the marker sits at the precision-weighted centre of what
+  // witnesses described. Vague (city/region) reports have weight 0 and never move it.
+  const incidentPrecision = precisionOf(incident.locationPrecision);
+  const previousWeight = Number.isFinite(incident.locationWeight)
+    ? incident.locationWeight
+    : previousCount * weightFor(incidentPrecision); // legacy docs: every report counted equally
+  const reportWeight = isValidCoordinates(report.location.coordinates) ? weightFor(report.location.precision) : 0;
+  const totalWeight = previousWeight + reportWeight;
+
+  let coordinates = incident.location.coordinates;
+  if (reportWeight > 0 && totalWeight > 0) {
+    const [lat, lng] = incident.location.coordinates;
+    const [rLat, rLng] = report.location.coordinates;
+    const share = reportWeight / totalWeight;
+    coordinates = [lat + (rLat - lat) * share, lng + (rLng - lng) * share];
+  }
 
   const breakdown = incident.breakdown || {};
   return {
@@ -174,6 +244,9 @@ function buildMergedFields(incident, report) {
     verification: verificationFor(confidence),
     severity: Math.max(incident.severity || 0, report.severity),
     'location.coordinates': coordinates,
+    locationWeight: totalWeight,
+    // Only pinnable reports can sharpen the incident's precision.
+    locationPrecision: reportWeight > 0 ? morePrecise(incidentPrecision, report.location.precision) : incidentPrecision,
     'breakdown.acoustics': unionStrings(breakdown.acoustics, report.breakdown.acoustics),
     'breakdown.visual_clues': unionStrings(breakdown.visual_clues, report.breakdown.visual_clues),
     'breakdown.logistics_needed': unionStrings(breakdown.logistics_needed, report.breakdown.logistics_needed),
@@ -191,21 +264,29 @@ function legacySeedReport(incident) {
     severity: incident.severity,
     address: incident.location && incident.location.address,
     coordinates: incident.location && incident.location.coordinates,
+    precision: precisionOf(incident.locationPrecision),
     receivedAt: incident.timestamp,
   };
 }
 
-// Node runs one ingest at a time, so two reports of the same event arriving together
-// cannot both miss each other and create duplicate incidents.
-let ingestQueue = Promise.resolve();
-function serialized(task) {
-  const run = ingestQueue.then(task, task);
-  ingestQueue = run.catch(() => {});
+function applyMerge(incident, report) {
+  const seed = incident.reports.length === 0 ? [legacySeedReport(incident)] : [];
+  incident.set(buildMergedFields(incident, report));
+  incident.category = classifyCategory(incident.type, incident.description); // backfills legacy docs
+  incident.reports = [...incident.reports, ...seed, toStoredReport(report)].slice(-MAX_STORED_REPORTS);
+}
+
+// Node runs one incident write at a time, so two reports of the same event arriving
+// together cannot both miss each other and create duplicate incidents.
+let incidentQueue = Promise.resolve();
+function withIncidentLock(task) {
+  const run = incidentQueue.then(task, task);
+  incidentQueue = run.catch(() => {});
   return run;
 }
 
 function ingestReport(body) {
-  return serialized(async () => {
+  return withIncidentLock(async () => {
     const report = toReport(body);
     // Coarse DB pre-filter only; findBestMatch applies the per-category quiet period.
     const cutoff = new Date(report.receivedAt.getTime() - MAX_QUIET_PERIOD_MS);
@@ -225,28 +306,40 @@ function ingestReport(body) {
       return { incident: created, merged: false, distanceKm: null };
     }
 
-    const incident = match.incident;
-    const seed = incident.reports.length === 0 ? [legacySeedReport(incident)] : [];
+    applyMerge(match.incident, report);
+    await match.incident.save();
+    return { incident: match.incident, merged: true, distanceKm: match.distanceKm };
+  });
+}
 
-    incident.set(buildMergedFields(incident, report));
-    incident.category = report.category; // same by construction; backfills legacy docs
-    incident.reports = [...incident.reports, ...seed, toStoredReport(report)].slice(-MAX_STORED_REPORTS);
+// Operator-confirmed merge of an already-validated report (e.g. an unplaced lead) into a
+// specific incident. Returns null when the incident is missing or resolved.
+function attachReportToIncident(incidentId, report) {
+  return withIncidentLock(async () => {
+    const incident = await Incident.findById(incidentId);
+    if (!incident || incident.status === 'RESOLVED') return null;
+
+    applyMerge(incident, report);
     await incident.save();
-
-    return { incident, merged: true, distanceKm: match.distanceKm };
+    return incident;
   });
 }
 
 module.exports = {
-  CORRELATION_RADIUS_KM,
+  PRECISION,
   QUIET_PERIOD_MS_BY_CATEGORY,
+  attachReportToIncident,
   buildMergedFields,
   buildNewIncident,
   classifyCategory,
   computeConfidence,
   findBestMatch,
   ingestReport,
+  isOpenCandidate,
+  matchRadiusKm,
   quietPeriodFor,
+  radiusFor,
+  toAnyReport,
   toReport,
   verificationFor,
 };

@@ -3,9 +3,12 @@ const mongoose = require('mongoose');
 const Advisory = require('../../models/Advisory');
 const ForceUnit = require('../../models/ForceUnit');
 const Incident = require('../../models/Incident');
+const Lead = require('../../models/Lead');
 const { markChanged } = require('../services/changeFeed');
-const { ingestReport } = require('../services/correlationService');
+const { ingestReport, toAnyReport } = require('../services/correlationService');
 const { analyzeIncidentInput } = require('../services/geminiService');
+const { createLead } = require('../services/leadService');
+const { isPlaceable } = require('../utils/aiResponseParser');
 const { env } = require('../config/env');
 
 function httpError(statusCode, publicMessage) {
@@ -36,14 +39,32 @@ async function ingestIncident(req, res, next) {
       ? `[VOICE CALL] ${analysis.description}`
       : analysis.description;
 
-    // Every valid report is registered: it opens a new UNCONFIRMED incident or
+    const body = { ...analysis, description, source };
+
+    // Only a city or region named ("fire in Delhi"): too vague to pin or to merge
+    // automatically. Keep it as an unplaced report for an operator instead of dropping it.
+    if (!isPlaceable(analysis.location.precision)) {
+      const lead = await createLead(toAnyReport(body));
+      markChanged();
+      return res.json({
+        success: true,
+        outcome: 'UNPLACED',
+        merged: false,
+        lead,
+        message: `Logged as an unplaced report for "${lead.address}". It is not on the map yet: `
+          + 'add a street, landmark or neighbourhood so responders can find it.',
+      });
+    }
+
+    // Every valid, placeable report is registered: it opens a new UNCONFIRMED incident or
     // corroborates an existing one nearby. It is never dropped for lack of corroboration.
-    const { incident, merged, distanceKm } = await ingestReport({ ...analysis, description, source });
+    const { incident, merged, distanceKm } = await ingestReport(body);
     await incident.populate('assignedUnit');
 
     markChanged();
     return res.json({
       success: true,
+      outcome: merged ? 'MERGED' : 'NEW',
       merged,
       distanceKm: distanceKm === null ? null : Number(distanceKm.toFixed(3)),
       incident,
@@ -98,6 +119,7 @@ async function clearSystem(req, res, next) {
     }
 
     await Incident.deleteMany({});
+    await Lead.deleteMany({});
     await ForceUnit.updateMany({}, { status: 'IDLE' });
     await Advisory.deleteMany({});
 
