@@ -44,8 +44,7 @@ export default function HelplineSimulator() {
         audioFile
       );
 
-      // [FIXED: Use API_URL]
-      await fetch(`${API_URL}/api/incident`, {
+      const res = await fetch(`${API_URL}/api/incident`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -53,6 +52,7 @@ export default function HelplineSimulator() {
           description: "[VOICE CALL] " + aiData.description,
         }),
       });
+      if (!res.ok) throw new Error("Incident registration failed");
 
       setStatus("DISPATCHED");
       setTimeout(() => setStatus("IDLE"), 3000);

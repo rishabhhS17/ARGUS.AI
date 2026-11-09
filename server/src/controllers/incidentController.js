@@ -1,10 +1,7 @@
 const Advisory = require('../../models/Advisory');
 const ForceUnit = require('../../models/ForceUnit');
 const Incident = require('../../models/Incident');
-const {
-  emitAdvisoriesCleared,
-  emitIncidentAlert,
-} = require('../services/realtimeService');
+const { markChanged } = require('../services/changeFeed');
 const { env } = require('../config/env');
 
 async function createIncident(req, res, next) {
@@ -22,10 +19,7 @@ async function createIncident(req, res, next) {
       assignedUnit: null,
     });
 
-    const incidents = await Incident.find().populate('assignedUnit').sort({ timestamp: -1 });
-    const units = await ForceUnit.find();
-
-    emitIncidentAlert({ incidents, units, newIncident: incident });
+    markChanged();
     return res.json({ success: true, incident });
   } catch (err) {
     return next(err);
@@ -50,11 +44,7 @@ async function clearSystem(req, res, next) {
     await ForceUnit.updateMany({}, { status: 'IDLE' });
     await Advisory.deleteMany({});
 
-    const units = await ForceUnit.find();
-
-    emitIncidentAlert({ incidents: [], units, newIncident: null });
-    emitAdvisoriesCleared();
-
+    markChanged();
     return res.json({ success: true });
   } catch (err) {
     return next(err);

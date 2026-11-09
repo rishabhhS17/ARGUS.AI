@@ -1,19 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { getSocket } from "../services/socket";
-import { 
-  Activity, Crosshair, MapPin, Eye, Volume2, Truck, 
-  CheckCircle2, Trash2, Maximize, Flame, Stethoscope, 
+import {
+  Activity, Crosshair, MapPin, Eye, Volume2, Truck,
+  CheckCircle2, Trash2, Maximize, Flame, Stethoscope,
   Megaphone, Loader2, ChevronDown, Shield, Siren, X
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
-import { generateAdvisoryText } from '../services/gemini';
+import { generateAdvisoryText, API_URL } from '../services/gemini';
+import { useLiveData } from '../services/liveData';
 import SystemStatusSidebar from './SystemStatusSidebar';
-
-// --- ENV VAR HANDLING ---
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const socket = getSocket();
 
 // --- ICONS ---
 const incidentIcon = new L.DivIcon({
@@ -70,8 +66,7 @@ function MapController({ center, zoom, shouldFly }: { center: [number, number] |
 }
 
 export default function SurveillanceDashboard() {
-  const [incidents, setIncidents] = useState<any[]>([]);
-  const [units, setUnits] = useState<any[]>([]);
+  const { incidents, units, loaded, refresh } = useLiveData();
   const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
   const [suggestedUnits, setSuggestedUnits] = useState<any[]>([]);
   
@@ -81,6 +76,9 @@ export default function SurveillanceDashboard() {
   const [flash, setFlash] = useState(false);
   const [advisoryStatus, setAdvisoryStatus] = useState('');
   const [incomingAlert, setIncomingAlert] = useState<any | null>(null);
+  const alertTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  // Incident ids from the previous poll; null until the first snapshot lands.
+  const seenRef = useRef<Set<string> | null>(null);
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   
@@ -104,6 +102,7 @@ export default function SurveillanceDashboard() {
       });
 
       if (res.ok) {
+        refresh();
         setSelectedIncident(null);
         setIsPanelOpen(false);
         handleResetView();
@@ -134,6 +133,7 @@ export default function SurveillanceDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text })
     });
+    refresh();
     setAdvisoryStatus('SENT');
     setTimeout(() => setAdvisoryStatus(''), 2000);
   };
@@ -172,39 +172,38 @@ export default function SurveillanceDashboard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ incidentId: selectedIncident._id, unitId })
     });
-    setSuggestedUnits([]); 
+    setSuggestedUnits([]);
+    refresh();
   };
 
+  // Polls replace socket pushes, so "something happened" is worked out by diffing
+  // snapshots: an id that was not in the previous poll is a new incident.
   useEffect(() => {
-    fetch(`${API_URL}/api/data`)
-      .then(res => res.json())
-      .then(data => {
-        setIncidents(data.incidents);
-        setUnits(data.units);
-      });
+    if (!loaded) return;
 
-    socket.on("incident_alert", (data) => {
-      setIncidents(data.incidents);
-      setUnits(data.units);
+    const previous = seenRef.current;
+    seenRef.current = new Set(incidents.map((i) => i._id));
+    if (!previous) return; // first snapshot: existing incidents are not news
 
-      if (data.newIncident) {
-        setIncomingAlert(data.newIncident);
-        setTimeout(() => setIncomingAlert(null), 9000);
+    const fresh = incidents.find((i) => !previous.has(i._id));
+    if (!fresh) return;
 
-        if (data.newIncident.severity > 7) {
-          setFlash(true);
-          setTimeout(() => setFlash(false), 800);
-        }
-      }
-    });
+    setIncomingAlert(fresh);
+    clearTimeout(alertTimerRef.current);
+    alertTimerRef.current = setTimeout(() => setIncomingAlert(null), 9000);
 
-    socket.on("units_updated", setUnits);
+    if (fresh.severity > 7) {
+      setFlash(true);
+      setTimeout(() => setFlash(false), 800);
+    }
+  }, [incidents, loaded]);
 
-    return () => {
-      socket.off("incident_alert");
-      socket.off("units_updated");
-    };
-  }, []);
+  useEffect(() => () => clearTimeout(alertTimerRef.current), []);
+
+  // Keep the open details panel in sync with the latest poll (or clear it after a reset).
+  useEffect(() => {
+    setSelectedIncident((prev: any) => (prev ? incidents.find((i) => i._id === prev._id) ?? null : prev));
+  }, [incidents]);
 
   return (
     <div className="flex flex-col md:flex-row h-full bg-slate-950 text-slate-200 relative overflow-hidden">
@@ -268,7 +267,7 @@ export default function SurveillanceDashboard() {
               <React.Fragment key={inc._id}>
                 <Marker 
                   position={inc.location.coordinates as [number, number]} 
-                  icon={incidentIcon} 
+                  icon={incidentIcon}
                   eventHandlers={{ click: () => focusOnIncident(inc) }} 
                 />
                 {inc.assignedUnit && isValidCoord(inc.assignedUnit.coordinates) && (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -7,11 +7,10 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { getSocket } from "../services/socket";
-
 import { Flame, Stethoscope, Siren, Map as MapIcon } from "lucide-react"; // Removed unused 'Shield', 'Trash2'
 import "leaflet/dist/leaflet.css";
 import { API_URL } from "../services/gemini";
+import { useLiveData } from "../services/liveData";
 
 // ... (Keep existing Icons: policeIcon, fireIcon, medicalIcon) ...
 const policeIcon = new L.DivIcon({
@@ -42,7 +41,7 @@ function ClickHandler({
 }
 
 export default function UnitManager() {
-  const [units, setUnits] = useState<any[]>([]);
+  const { units, refresh } = useLiveData();
   const [selectedType, setSelectedType] = useState("POLICE");
   const [unitName, setUnitName] = useState("");
 
@@ -50,21 +49,6 @@ export default function UnitManager() {
     const prefix = type === "POLICE" ? "PCR" : type === "FIRE" ? "ENG" : "MED";
     return `${prefix}-${100 + count + 1}`;
   };
-
- useEffect(() => {
-  const socket = getSocket();
-
-  fetch(`${API_URL}/api/data`)
-    .then(res => res.json())
-    .then(data => setUnits(data.units));
-
-  socket.on("units_updated", setUnits);
-
-  return () => {
-    socket.off("units_updated");
-  };
-}, []);
-
 
   const handleAddUnit = async (lat: number, lng: number) => {
     const name = unitName || getNextName(selectedType, units.length);
@@ -79,6 +63,7 @@ export default function UnitManager() {
       }),
     });
     setUnitName("");
+    refresh();
   };
 
   return (

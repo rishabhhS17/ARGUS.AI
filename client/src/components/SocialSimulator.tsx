@@ -1,36 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { processMediaOnClient, API_URL } from '../services/gemini'; // [FIXED: Import API_URL]
+import React, { useState } from 'react';
+import { processMediaOnClient, API_URL } from '../services/gemini';
+import { useLiveData } from '../services/liveData';
 import { Image, X, Loader2, Globe, ShieldAlert, Activity, MapPin } from 'lucide-react';
-import { getSocket } from "../services/socket";
-
-
 
 export default function SocialSimulator() {
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [status, setStatus] = useState('IDLE');
-  const [advisories, setAdvisories] = useState<any[]>([]);
-
-  useEffect(() => {
-  const socket = getSocket();
-
-  fetch(`${API_URL}/api/data`)
-    .then(res => res.json())
-    .then(data => setAdvisories(data.advisories || []));
-
-  socket.on("advisory_posted", (newAdvisory) => {
-    setAdvisories(prev => [newAdvisory, ...prev]);
-  });
-
-  socket.on("advisories_cleared", () => setAdvisories([]));
-
-  return () => {
-    socket.off("advisory_posted");
-    socket.off("advisories_cleared");
-  };
-}, []);
-
+  const { advisories } = useLiveData();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -48,13 +26,13 @@ export default function SocialSimulator() {
       const aiData = await processMediaOnClient(text, file);
       setStatus('PUBLISHING');
       
-      // [FIXED: Use API_URL]
-      await fetch(`${API_URL}/api/incident`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(aiData) 
+      const res = await fetch(`${API_URL}/api/incident`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(aiData)
       });
-      
+      if (!res.ok) throw new Error('Incident registration failed');
+
       setStatus('SENT');
       setTimeout(() => { setText(''); clearFile(); setStatus('IDLE'); }, 2000);
     } catch (e) {

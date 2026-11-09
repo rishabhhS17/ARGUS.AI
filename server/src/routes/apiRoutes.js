@@ -5,12 +5,12 @@ const { createAdvisory } = require('../controllers/advisoryController');
 const { getData } = require('../controllers/dataController');
 const { clearSystem, createIncident } = require('../controllers/incidentController');
 const { createUnit, deployUnit } = require('../controllers/unitController');
-const { aiLimiter } = require('../middleware/rateLimiters');
+const { aiLimiter, pollLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
 
 router.post('/analyze', aiLimiter, analyze);
-router.get('/data', getData);
+router.get('/data', pollLimiter, getData);
 router.post('/units', createUnit);
 router.post('/deploy', deployUnit);
 router.post('/incident', createIncident);
