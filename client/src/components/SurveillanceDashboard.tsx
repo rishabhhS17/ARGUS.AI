@@ -205,16 +205,23 @@ export default function SurveillanceDashboard() {
 
   const handleBroadcastAdvisory = async () => {
     if (!selectedIncident) return;
-    setAdvisoryStatus('GENERATING...');
-    const text = await generateAdvisoryText(selectedIncident);
-    setAdvisoryStatus('POSTING...');
-    await fetch(`${API_URL}/api/advisory`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
-    });
-    refresh();
-    setAdvisoryStatus('SENT');
+    try {
+      setAdvisoryStatus('GENERATING...');
+      const text = await generateAdvisoryText(selectedIncident);
+      setAdvisoryStatus('POSTING...');
+      const res = await fetch(`${API_URL}/api/advisory`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, 'Advisory could not be posted'));
+      refresh();
+      setAdvisoryStatus('SENT');
+    } catch (err) {
+      console.error(err);
+      setActionError(err instanceof Error ? err.message : 'Advisory failed');
+      setAdvisoryStatus('FAILED');
+    }
     setTimeout(() => setAdvisoryStatus(''), 2000);
   };
 

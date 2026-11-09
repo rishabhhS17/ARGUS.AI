@@ -16,7 +16,35 @@ function getModel() {
   }
 
   const genAI = new GoogleGenerativeAI(env.geminiApiKey);
-  return genAI.getGenerativeModel({ model: env.geminiModel });
+  // Without a timeout a stalled upstream request holds the reporter's request open for minutes.
+  return genAI.getGenerativeModel({ model: env.geminiModel }, { timeout: GEMINI_TIMEOUT_MS });
+}
+
+const GEMINI_TIMEOUT_MS = 30 * 1000;
+
+// Upstream overload, rate limiting, timeouts and network failures are not our bugs:
+// report them as 503 "try again" instead of a generic 500.
+async function generate(model, request) {
+  try {
+    return await model.generateContent(request);
+  } catch (err) {
+    const status = Number(err.status);
+    const transient = status === 429 || status === 503 || status === 504
+      || err.name === 'AbortError' || /fetch failed|aborted|timed? ?out/i.test(err.message || '');
+
+    // Key, permission or billing problems on the provider account (e.g. 402 "prepayment
+    // credits are depleted"). The details stay in the server log; callers get a clean 503.
+    const accountProblem = status === 401 || status === 402 || status === 403;
+
+    if (transient) {
+      err.statusCode = 503;
+      err.publicMessage = 'The AI service is busy or unreachable right now. Please try again in a minute.';
+    } else if (accountProblem) {
+      err.statusCode = 503;
+      err.publicMessage = 'The AI service is unavailable right now (provider account issue). Please contact the administrator.';
+    }
+    throw err;
+  }
 }
 
 async function analyzeIncidentInput({ text, fileData, mimeType }) {
@@ -38,7 +66,7 @@ async function analyzeIncidentInput({ text, fileData, mimeType }) {
 
   parts.push({ text: getIncidentAnalysisPrompt() });
 
-  const result = await model.generateContent({
+  const result = await generate(model, {
     contents: [{ role: 'user', parts }],
   });
 
@@ -50,7 +78,7 @@ async function analyzeIncidentInput({ text, fileData, mimeType }) {
 async function generatePublicAdvisory(text) {
   const model = getModel();
 
-  const result = await model.generateContent({
+  const result = await generate(model, {
     contents: [
       {
         role: 'user',
