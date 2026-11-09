@@ -29,7 +29,8 @@ In the critical moments following a disaster (fire, riot, flood), control rooms 
 
 ### 1. Live Command Dashboard
 
-* **Real-time Visualization:** Incidents appear instantly on a Leaflet map via WebSockets.
+* **Live Visualization:** Incidents appear on a Leaflet map within seconds via lightweight HTTP polling (no WebSocket server needed).
+* **Incident Correlation:** Reports of the same event (same category, within 1.5 km and 90 min) merge into one incident, with a source count, confidence score, and the full list of corroborating reports.
 * **Asset Tracking:** Live tracking of Police, Fire, and Medical units.
 * **Smart Dispatch:** "Deploy" button calculates distances and assigns the nearest available unit visually.
 
@@ -60,7 +61,7 @@ In the critical moments following a disaster (fire, riot, flood), control rooms 
 * **Frontend:** React, Vite, Tailwind CSS, Leaflet Maps, Lucide Icons.
 * **Backend:** Node.js, Express.
 * **Database:** MongoDB (Atlas).
-* **Real-Time:** Socket.io.
+* **Live Updates:** Versioned HTTP polling (`GET /api/data?since=<version>`).
 * **Artificial Intelligence:** Google Gemini 3.7 Flash (via @google/genai SDK).
 
 ---
