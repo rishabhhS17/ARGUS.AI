@@ -3,7 +3,7 @@ const express = require('express');
 const { analyze } = require('../controllers/aiController');
 const { createAdvisory } = require('../controllers/advisoryController');
 const { getData } = require('../controllers/dataController');
-const { clearSystem, ingestIncident } = require('../controllers/incidentController');
+const { clearSystem, ingestIncident, resolveIncident } = require('../controllers/incidentController');
 const { createUnit, deployUnit, getDispatchSuggestions } = require('../controllers/unitController');
 const { aiLimiter, pollLimiter } = require('../middleware/rateLimiters');
 
@@ -17,6 +17,7 @@ router.get('/data', pollLimiter, getData);
 router.get('/incidents/:id/suggestions', getDispatchSuggestions);
 router.post('/units', createUnit);
 router.post('/deploy', deployUnit);
+router.post('/resolve', resolveIncident);
 router.post('/advisory', createAdvisory);
 router.delete('/clear', clearSystem);
 

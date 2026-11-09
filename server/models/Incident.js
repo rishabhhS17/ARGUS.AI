@@ -26,7 +26,8 @@ const IncidentSchema = new mongoose.Schema({
     logistics_needed: [String]
   },
   action_plan: String,
-  status: { type: String, default: 'PENDING' },
+  status: { type: String, default: 'PENDING' }, // PENDING -> DISPATCHED -> RESOLVED
+  resolvedAt: { type: Date, default: null },
   assignedUnit: { type: mongoose.Schema.Types.ObjectId, ref: 'ForceUnit' },
   timestamp: { type: Date, default: Date.now, index: true }, // first report
 

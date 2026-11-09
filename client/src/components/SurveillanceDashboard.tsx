@@ -230,7 +230,7 @@ export default function SurveillanceDashboard() {
     setTimeout(() => setShouldFly(false), 2500);
   };
 
-  // Incident actions share one shape: POST, surface the server's reason on failure
+  // Deploy and resolve share one shape: POST, surface the server's reason on failure
   // (e.g. "That unit is no longer available"), then pull fresh state.
   const runIncidentAction = async (path: string, body: object) => {
     setIsActing(true);
@@ -254,6 +254,11 @@ export default function SurveillanceDashboard() {
     if (!selectedIncident) return;
     setSuggestedUnits([]);
     return runIncidentAction('deploy', { incidentId: selectedIncident._id, unitId });
+  };
+
+  const handleResolve = () => {
+    if (!selectedIncident) return;
+    return runIncidentAction('resolve', { incidentId: selectedIncident._id });
   };
 
   // Nearest-unit ranking happens on the server. Re-ask whenever the selection, its
@@ -369,7 +374,8 @@ export default function SurveillanceDashboard() {
           <MapController center={mapCenter} zoom={mapZoom} shouldFly={shouldFly} />
           
           {incidents.map((inc) => {
-            if (!isValidCoord(inc?.location?.coordinates)) return null;
+            // Resolved incidents leave the map; it only shows what still needs attention.
+            if (!isValidCoord(inc?.location?.coordinates) || inc.status === 'RESOLVED') return null;
 
             return (
               <React.Fragment key={inc._id}>
@@ -378,7 +384,7 @@ export default function SurveillanceDashboard() {
                   icon={getIncidentIcon(inc.reportCount ?? 1, inc.verification)}
                   eventHandlers={{ click: () => focusOnIncident(inc) }} 
                 />
-                {inc.assignedUnit && isValidCoord(inc.assignedUnit.coordinates) && (
+                {inc.status === 'DISPATCHED' && inc.assignedUnit && isValidCoord(inc.assignedUnit.coordinates) && (
                   <Polyline 
                       positions={[
                         inc.location.coordinates as [number, number], 
@@ -523,7 +529,20 @@ export default function SurveillanceDashboard() {
               <div className="pt-2 border-t border-slate-800">
                  <h4 className="text-xs font-bold text-slate-500 flex items-center gap-2 mb-3"><Truck className="w-3 h-3"/> DEPLOYMENT STATUS</h4>
                  
-                 {selectedIncident.assignedUnit ? (
+                 {selectedIncident.status === 'RESOLVED' ? (
+                   <div className="flex items-center justify-between bg-slate-800/40 p-3 rounded border border-slate-700">
+                     <div>
+                       <span className="text-slate-300 font-mono text-sm font-bold block">INCIDENT CLOSED</span>
+                       <span className="text-[10px] text-slate-500 font-mono">
+                         {selectedIncident.assignedUnit ? `${selectedIncident.assignedUnit.name} released · ` : ''}
+                         {selectedIncident.resolvedAt ? new Date(selectedIncident.resolvedAt).toLocaleTimeString() : ''}
+                       </span>
+                     </div>
+                     <div className="flex items-center gap-1 text-[10px] bg-slate-700/40 text-slate-300 px-2 py-0.5 rounded border border-slate-600">
+                        <CheckCircle2 className="w-3 h-3"/> RESOLVED
+                     </div>
+                   </div>
+                 ) : selectedIncident.assignedUnit ? (
                    <div className="flex items-center justify-between bg-green-950/30 p-3 rounded border border-green-900/50 animate-in zoom-in duration-300">
                      <div>
                        <span className="text-green-400 font-mono text-sm font-bold block">{selectedIncident.assignedUnit.name}</span>
@@ -555,6 +574,17 @@ export default function SurveillanceDashboard() {
                        ))
                      )}
                    </div>
+                 )}
+
+                 {selectedIncident.status !== 'RESOLVED' && (
+                   <button
+                     onClick={handleResolve}
+                     disabled={isActing}
+                     className="mt-3 w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 hover:text-white p-2 rounded transition-all flex items-center justify-center gap-2 text-xs font-mono font-bold disabled:opacity-50"
+                   >
+                     <CheckCircle2 className="w-4 h-4" />
+                     {selectedIncident.assignedUnit ? 'MARK RESOLVED & RELEASE UNIT' : 'MARK RESOLVED'}
+                   </button>
                  )}
 
                  {actionError && (

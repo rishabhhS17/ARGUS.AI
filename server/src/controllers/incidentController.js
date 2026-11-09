@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+
 const Advisory = require('../../models/Advisory');
 const ForceUnit = require('../../models/ForceUnit');
 const Incident = require('../../models/Incident');
@@ -51,6 +53,36 @@ async function ingestIncident(req, res, next) {
   }
 }
 
+// POST /api/resolve: closes an incident and frees its unit. Resolved incidents stop
+// accepting new reports, so a later event at the same spot opens a fresh incident.
+async function resolveIncident(req, res, next) {
+  try {
+    const { incidentId } = req.body || {};
+    if (!mongoose.isValidObjectId(incidentId)) throw httpError(400, 'incidentId is required');
+
+    const incident = await Incident.findOneAndUpdate(
+      { _id: incidentId, status: { $ne: 'RESOLVED' } },
+      { status: 'RESOLVED', resolvedAt: new Date() },
+      { new: true },
+    );
+
+    if (!incident) {
+      const exists = await Incident.exists({ _id: incidentId });
+      throw exists ? httpError(409, 'Incident is already resolved') : httpError(404, 'Incident not found');
+    }
+
+    if (incident.assignedUnit) {
+      await ForceUnit.updateOne({ _id: incident.assignedUnit, status: 'BUSY' }, { status: 'IDLE' });
+    }
+    await incident.populate('assignedUnit');
+
+    markChanged();
+    return res.json({ success: true, incident });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 async function clearSystem(req, res, next) {
   try {
     const clientKey = req.headers['x-admin-key'];
@@ -76,4 +108,4 @@ async function clearSystem(req, res, next) {
   }
 }
 
-module.exports = { clearSystem, ingestIncident };
+module.exports = { clearSystem, ingestIncident, resolveIncident };
