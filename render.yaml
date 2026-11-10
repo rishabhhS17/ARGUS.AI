@@ -21,3 +21,5 @@ services:
         value: gemini-3.7-flash
       - key: ADMIN_KEY
         sync: false
+      - key: TRUST_PROXY_HOPS
+        value: "1"

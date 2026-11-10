@@ -1,5 +1,8 @@
 const rateLimit = require('express-rate-limit');
 
+// Every limiter counts per client IP (req.ip, the express-rate-limit default). That is the
+// real user's IP only because app.js sets `trust proxy` to the number of proxies in front.
+
 function isPoll(req) {
   return req.method === 'GET' && req.path === '/data';
 }
