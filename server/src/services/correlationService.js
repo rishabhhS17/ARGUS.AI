@@ -1,17 +1,19 @@
 const Incident = require('../../models/Incident');
 const { haversineKm, isValidCoordinates } = require('../utils/geo');
 const { assertReportable, isPlaceable, sanitizeIncidentAnalysis } = require('../utils/aiResponseParser');
+const { env } = require('../config/env');
 
 // How specific a report's location is decides how far apart two reports may be and still
 // describe the same event, and how strongly a report pulls the incident's marker.
 // - radiusKm: Gemini estimates coordinates from free text, so even an "exact" place can
-//   be off by a few hundred metres; a neighbourhood can be off by ~1 km.
+//   be off by a few hundred metres; a neighbourhood can be off by ~1 km. The exact and area
+//   radii are tunable via MATCH_RADIUS_EXACT_KM / MATCH_RADIUS_AREA_KM (default 0.5 / 1.5).
 // - weight: an exact address should move the pin more than "somewhere in the market".
 //   City/region reports have weight 0: they never move a pin. Their radius is only used to
 //   SUGGEST incidents an unplaced report may belong to; they are never merged automatically.
 const PRECISION = {
-  exact: { radiusKm: 0.5, weight: 1 },
-  area: { radiusKm: 1.5, weight: 0.4 },
+  exact: { radiusKm: env.matchRadiusExactKm, weight: 1 },
+  area: { radiusKm: env.matchRadiusAreaKm, weight: 0.4 },
   city: { radiusKm: 25, weight: 0 },
   region: { radiusKm: 150, weight: 0 },
 };
@@ -29,8 +31,9 @@ function weightFor(precision) {
   return PRECISION[precisionOf(precision)].weight;
 }
 
-// The looser of the two decides: an exact report and a neighbourhood-level incident can be
-// ~1.5 km apart and still be the same event; two exact reports must be within 0.5 km.
+// The looser of the two decides: an exact report and a neighbourhood-level incident may be
+// up to the area radius apart and still be the same event; two exact reports must be within
+// the exact radius.
 function matchRadiusKm(reportPrecision, incidentPrecision) {
   return Math.max(radiusFor(reportPrecision), radiusFor(incidentPrecision));
 }

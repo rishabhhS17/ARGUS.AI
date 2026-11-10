@@ -23,3 +23,7 @@ services:
         sync: false
       - key: TRUST_PROXY_HOPS
         value: "1"
+      - key: MATCH_RADIUS_EXACT_KM
+        value: "0.5"
+      - key: MATCH_RADIUS_AREA_KM
+        value: "1.5"
