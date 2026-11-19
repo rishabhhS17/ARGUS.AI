@@ -372,7 +372,12 @@ export default function SurveillanceDashboard() {
       {/* MAP AREA */}
       <div className="flex-1 relative h-full w-full">
         <MapContainer center={DEFAULT_VIEW} zoom={11} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap" />
+          {/* OpenStreetMap tiles need no API key; .argus-dark-tiles (index.css) darkens them. */}
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            className="argus-dark-tiles"
+          />
           <MapController center={mapCenter} zoom={mapZoom} shouldFly={shouldFly} />
           
           {incidents.map((inc) => {

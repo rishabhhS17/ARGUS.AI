@@ -44,6 +44,18 @@
     font-family: var(--font-body);
   }
   .leaflet-container {
-    background: #0f172a; 
+    background: #0f172a;
   }
+}
+
+/* Dark map theme: standard OpenStreetMap tiles (no API key) inverted and muted in CSS.
+   Applied to the tile layer only, so markers, popups and routes keep their own colours. */
+/* Leaflet's own stylesheet loads later and sets a light grey background, which flashes
+   before the tiles arrive. The extra `div` outranks it. */
+div.leaflet-container {
+  background: #0f172a;
+}
+
+.argus-dark-tiles {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.45);
 }

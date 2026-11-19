@@ -149,8 +149,9 @@ export default function UnitManager() {
           zoomControl={false}
         >
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            attribution="© OpenStreetMap"
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            className="argus-dark-tiles"
           />
           <ClickHandler onMapClick={handleAddUnit} />
           {units.map((unit) => (
